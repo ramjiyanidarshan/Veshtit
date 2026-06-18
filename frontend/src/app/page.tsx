@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { getStatusOption } from "@/components/StatusDropdown";
 import AppShell from "@/components/AppShell";
+import ProviderIcon from "@/components/ProviderIcon";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
 
@@ -302,8 +303,8 @@ export default function DashboardPage() {
                     <div className="sec-issues-list">
                       {displayIssues.map((issue) => (
                         <div key={issue._id} className="sec-issue-row">
-                          <div className="sec-issue-avatar" style={{ background: `${strengthColor(issue.label)}22`, color: strengthColor(issue.label) }}>
-                            {issue.provider.charAt(0)}
+                          <div className="sec-issue-avatar" style={{ background: "transparent", border: "none" }}>
+                            <ProviderIcon name={issue.provider} size={32} />
                           </div>
                           <div className="sec-issue-body">
                             <div className="sec-issue-provider">{issue.provider}</div>
@@ -397,7 +398,9 @@ export default function DashboardPage() {
                       const max = stats!.topProviders[0]?.count ?? 1;
                       return (
                         <div key={p.name} className="provider-bar-item">
-                          <div className="provider-bar-avatar">{p.name.charAt(0)}</div>
+                          <div className="provider-bar-avatar" style={{ background: "transparent", border: "none" }}>
+                            <ProviderIcon name={p.name} size={30} />
+                          </div>
                           <div className="provider-bar-body">
                             <div className="provider-bar-name-row">
                               <span className="provider-bar-name">{p.name}</span>
@@ -440,7 +443,9 @@ export default function DashboardPage() {
                     return (
                       <div key={a._id} className="recent-table-row">
                         <div className="recent-provider">
-                          <div className="recent-provider-avatar">{a.serviceProvider.charAt(0)}</div>
+                          <div className="recent-provider-avatar" style={{ background: "transparent", border: "none" }}>
+                            <ProviderIcon name={a.serviceProvider} size={28} />
+                          </div>
                           <span className="recent-provider-name">{a.serviceProvider}</span>
                         </div>
                         <span className="source-badge" data-import={isImport}>

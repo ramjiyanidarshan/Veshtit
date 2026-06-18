@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Account } from "@/lib/types";
 import { getStatusOption } from "./StatusDropdown";
+import ProviderIcon from "./ProviderIcon";
 
 interface AccountDetailProps {
   accounts: Account[];
@@ -25,6 +26,13 @@ function formatDate(dateStr: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+function getFirstUrl(account: Account) {
+  if (account.attributes["Url"] || account.attributes["URL"] || account.attributes["url"]) {
+    return account.attributes["Url"] || account.attributes["URL"] || account.attributes["url"];
+  }
+  return null;
 }
 
 interface AttributeValueProps {
@@ -169,6 +177,9 @@ export default function AccountDetail({
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
+        <div style={{ marginRight: 12 }}>
+          <ProviderIcon name={providerName} size={36} />
+        </div>
         <h2 className="main-panel-title">{providerName}</h2>
         <span className="text-xs text-muted">
           {accounts.length} account{accounts.length !== 1 ? "s" : ""}
@@ -179,27 +190,12 @@ export default function AccountDetail({
       </div>
 
       <div className="main-panel-body">
+        <div className="accounts-grid">
         {accounts.map((account, idx) => (
           <div key={account._id} className="account-card" id={`account-card-${account._id}`}>
             <div className="account-card-header">
               <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "var(--radius-md)",
-                    background: "var(--gradient-brand-subtle)",
-                    border: "1px solid var(--border-default)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                    color: "var(--accent-primary-light)",
-                  }}
-                >
-                  {idx + 1}
-                </div>
+                <ProviderIcon name={providerName} url={getFirstUrl(account)} size={32} />
                 <div>
                   <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
                     Account {idx + 1}
@@ -275,6 +271,7 @@ export default function AccountDetail({
             </div>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );

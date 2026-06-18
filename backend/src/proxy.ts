@@ -12,8 +12,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow OPTIONS preflight
-  if (request.method === "OPTIONS") {
+  // Allow unauthenticated access to login and options requests
+  if (
+    pathname === "/api/auth/login" ||
+    request.method === "OPTIONS"
+  ) {
     return NextResponse.next();
   }
 

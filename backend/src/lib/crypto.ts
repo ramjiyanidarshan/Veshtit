@@ -68,21 +68,43 @@ export async function decrypt(encryptedString: string): Promise<string> {
 }
 
 /**
- * Encrypts all non-null values in an attributes map.
+ * Checks if an attribute key indicates sensitive data that should be encrypted.
+ */
+export function isSensitiveAttribute(key: string): boolean {
+  const k = key.toLowerCase();
+  return (
+    k.includes("password") ||
+    k.includes("pin") ||
+    k.includes("secret") ||
+    k.includes("token") ||
+    k.includes("key") ||
+    k.includes("passcode")
+  );
+}
+
+/**
+ * Encrypts only sensitive values in an attributes map.
+ * Non-sensitive values are stored as plaintext.
  */
 export async function encryptAttributes(
   attributes: Record<string, string | null>
 ): Promise<Record<string, string | null>> {
   const result: Record<string, string | null> = {};
   for (const [k, v] of Object.entries(attributes)) {
-    result[k] = v !== null ? await encrypt(v) : null;
+    if (v === null) {
+      result[k] = null;
+    } else if (isSensitiveAttribute(k)) {
+      result[k] = await encrypt(v);
+    } else {
+      result[k] = v; // plaintext for searchability
+    }
   }
   return result;
 }
 
 /**
- * Decrypts all non-null values in an attributes map.
- * Falls back to the raw value if decryption fails.
+ * Decrypts values in an attributes map.
+ * Safely ignores and returns plaintext fields.
  */
 export async function decryptAttributes(
   attributes: Record<string, string | null>
@@ -93,10 +115,18 @@ export async function decryptAttributes(
       result[k] = null;
       continue;
     }
+    
+    // Fast path: if it doesn't match the `iv:authTag:ciphertext` format, it's plaintext
+    const parts = v.split(":");
+    if (parts.length !== 3 || parts[0].length !== 16 || parts[1].length !== 24) {
+      result[k] = v;
+      continue;
+    }
+
     try {
       result[k] = await decrypt(v);
     } catch {
-      result[k] = v; // plaintext fallback (pre-encryption data)
+      result[k] = v; // fallback to plaintext just in case
     }
   }
   return result;
