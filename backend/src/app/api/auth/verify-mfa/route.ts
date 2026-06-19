@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticator } from "otplib";
 import { UserModel } from "@/lib/model";
-import { verifyToken, signToken, loadJwtSecret, buildAuthCookieHeader } from "@/lib/auth";
+import { verifyToken, signToken, buildAuthCookieHeader } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await loadJwtSecret();
-    const payload = verifyToken(tempToken);
+    const payload = await verifyToken(tempToken);
 
     if (!payload || !payload.mfaPending) {
       return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });

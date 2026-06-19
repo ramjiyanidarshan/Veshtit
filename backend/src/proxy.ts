@@ -4,7 +4,7 @@ import { verifyToken, COOKIE_NAME } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/api/auth/login", "/api/auth/verify-mfa"];
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
@@ -34,7 +34,7 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  const payload = verifyToken(token);
+  const payload = await verifyToken(token);
   if (!payload) {
     return NextResponse.json(
       { error: "Unauthorized: Invalid or expired token" },

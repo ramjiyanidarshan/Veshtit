@@ -48,12 +48,12 @@ export async function GET() {
   let aesKeyMasked = "••••••••";
   let jwtSecretMasked = "••••••••";
   try {
-    const aesKey = await getSetting(SETTING_KEYS.AES_KEY, process.env.AES_ENCRYPTION_KEY);
+    const aesKey = await getSetting(SETTING_KEYS.AES_KEY);
     aesKeyMasked = mask(aesKey);
   } catch { /* not yet set */ }
 
   try {
-    const jwtSecret = await getSetting(SETTING_KEYS.JWT_SECRET, process.env.JWT_SECRET);
+    const jwtSecret = await getSetting(SETTING_KEYS.JWT_SECRET);
     jwtSecretMasked = mask(jwtSecret);
   } catch { /* not yet set */ }
 
@@ -61,6 +61,36 @@ export async function GET() {
   try {
     const v = await getSetting(SETTING_KEYS.PASSWORD_ROTATION_DAYS, "90");
     rotationDays = Math.max(1, parseInt(v, 10) || 90);
+  } catch { /* use default */ }
+
+  let genLength = 16;
+  try {
+    const v = await getSetting("password_gen_length", "16");
+    genLength = Math.max(4, parseInt(v, 10) || 16);
+  } catch { /* use default */ }
+
+  let genUppercase = true;
+  try {
+    const v = await getSetting("password_gen_uppercase", "true");
+    genUppercase = v === "true";
+  } catch { /* use default */ }
+
+  let genLowercase = true;
+  try {
+    const v = await getSetting("password_gen_lowercase", "true");
+    genLowercase = v === "true";
+  } catch { /* use default */ }
+
+  let genNumbers = true;
+  try {
+    const v = await getSetting("password_gen_numbers", "true");
+    genNumbers = v === "true";
+  } catch { /* use default */ }
+
+  let genSymbols = true;
+  try {
+    const v = await getSetting("password_gen_symbols", "true");
+    genSymbols = v === "true";
   } catch { /* use default */ }
 
   const adminUser = await UserModel.findOne({});
@@ -85,13 +115,20 @@ export async function GET() {
     policy: {
       passwordRotationDays: rotationDays,
     },
+    generator: {
+      length: genLength,
+      uppercase: genUppercase,
+      lowercase: genLowercase,
+      numbers: genNumbers,
+      symbols: genSymbols,
+    },
   });
 }
 
 /**
  * PUT /api/settings
  * Actions:
- *   - changePassword  (stays in .env — APP_PASSWORD)
+ *   - changePassword  (stored in DB as bcrypt hash)
  *   - updateAesKey    (stored in DB)
  *   - updateJwtSecret (stored in DB, invalidates all sessions)
  *   - testDb
@@ -122,8 +159,7 @@ export async function PUT(req: NextRequest) {
       }
 
       const newHash = await bcrypt.hash(newPassword, 10);
-      adminUser.passwordHash = newHash;
-      await adminUser.save();
+      await UserModel.updateOne(adminUser._id!.toString(), { passwordHash: newHash });
 
       return NextResponse.json({ ok: true, message: "Password updated in database. Please log in again." });
     }
@@ -142,9 +178,9 @@ export async function PUT(req: NextRequest) {
       // Get current key for re-encryption
       let oldKey: string;
       try {
-        oldKey = await getSetting(SETTING_KEYS.AES_KEY, process.env.AES_ENCRYPTION_KEY);
+        oldKey = await getSetting(SETTING_KEYS.AES_KEY);
       } catch {
-        return NextResponse.json({ error: "No current AES key found." }, { status: 500 });
+        return NextResponse.json({ error: "No current AES key found in database." }, { status: 500 });
       }
 
       if (oldKey === newKey) {
@@ -152,13 +188,16 @@ export async function PUT(req: NextRequest) {
       }
 
       // Re-encrypt all accounts
-      const { reEncryptAttributes } = await import("@/lib/crypto");
+      const { reEncryptAttributes, decryptWithKey, encryptWithKey } = await import("@/lib/crypto");
       const { invalidateSetting } = await import("@/lib/settings");
       const db = await getDb();
       const col = db.collection("accounts");
       const accounts = await col.find({}).toArray();
 
       let reEncryptedCount = 0;
+      const oldKeyBuf = Buffer.from(oldKey, "hex");
+      const newKeyBuf = Buffer.from(newKey, "hex");
+
       for (const account of accounts) {
         try {
           const newAttrs = await reEncryptAttributes(
@@ -166,9 +205,31 @@ export async function PUT(req: NextRequest) {
             oldKey,
             newKey
           );
+
+          let newHistory: any = undefined;
+          if (account.passwordHistory && Array.isArray(account.passwordHistory)) {
+            newHistory = [];
+            for (const h of account.passwordHistory) {
+              try {
+                const plaintext = decryptWithKey(h.password, oldKeyBuf);
+                newHistory.push({
+                  password: encryptWithKey(plaintext, newKeyBuf),
+                  changedAt: h.changedAt,
+                });
+              } catch {
+                newHistory.push(h);
+              }
+            }
+          }
+
+          const setFields: any = { attributes: newAttrs, updatedAt: new Date() };
+          if (newHistory !== undefined) {
+            setFields.passwordHistory = newHistory;
+          }
+
           await col.updateOne(
             { _id: account._id },
-            { $set: { attributes: newAttrs, updatedAt: new Date() } }
+            { $set: setFields }
           );
           reEncryptedCount++;
         } catch (err) {
@@ -233,6 +294,37 @@ export async function PUT(req: NextRequest) {
       }
       await setSetting(SETTING_KEYS.PASSWORD_ROTATION_DAYS, String(Math.round(passwordRotationDays)));
       return NextResponse.json({ ok: true, message: `Password rotation reminder set to ${Math.round(passwordRotationDays)} days.` });
+    }
+
+    // ── Update password generator settings ────────────────────────────────────
+    if (action === "updateGeneratorSettings") {
+      const { length, uppercase, lowercase, numbers, symbols } = body;
+
+      if (length !== undefined) {
+        if (typeof length !== "number" || length < 4 || length > 128) {
+          return NextResponse.json({ error: "Password length must be between 4 and 128" }, { status: 400 });
+        }
+        await setSetting("password_gen_length", String(Math.round(length)));
+        invalidateSetting("password_gen_length");
+      }
+      if (uppercase !== undefined) {
+        await setSetting("password_gen_uppercase", String(!!uppercase));
+        invalidateSetting("password_gen_uppercase");
+      }
+      if (lowercase !== undefined) {
+        await setSetting("password_gen_lowercase", String(!!lowercase));
+        invalidateSetting("password_gen_lowercase");
+      }
+      if (numbers !== undefined) {
+        await setSetting("password_gen_numbers", String(!!numbers));
+        invalidateSetting("password_gen_numbers");
+      }
+      if (symbols !== undefined) {
+        await setSetting("password_gen_symbols", String(!!symbols));
+        invalidateSetting("password_gen_symbols");
+      }
+
+      return NextResponse.json({ ok: true, message: "Password generator settings updated." });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

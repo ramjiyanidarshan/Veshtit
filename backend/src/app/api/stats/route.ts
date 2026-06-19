@@ -1,31 +1,19 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { getSetting, SETTING_KEYS } from "@/lib/settings";
 import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 
 /**
  * Decrypt a single attribute value using the AES key stored in the settings
- * collection. Falls back to process.env.AES_ENCRYPTION_KEY.
+ * collection (DB-only, no env fallback).
  *
  * Inlined here (instead of importing from @/lib/crypto) so that the stats
  * route is completely self-contained and immune to HMR / module-cache issues.
  */
-async function decryptValue(encryptedString: string, db: Awaited<ReturnType<typeof getDb>>): Promise<string> {
-  // 1. Try to load the key from the settings collection
-  let hexKey: string | null = null;
-  try {
-    const settingDoc = await db.collection("settings").findOne({ _id: "aes_encryption_key" } as never);
-    if (settingDoc && (settingDoc as { value?: string }).value) {
-      hexKey = (settingDoc as unknown as { value: string }).value;
-    }
-  } catch { /* ignore */ }
-
-  // 2. Fall back to env
-  if (!hexKey) {
-    hexKey = process.env.AES_ENCRYPTION_KEY ?? null;
-  }
-
+async function decryptValue(encryptedString: string): Promise<string> {
+  const hexKey = await getSetting(SETTING_KEYS.AES_KEY);
   if (!hexKey || hexKey.length !== 64) {
     throw new Error("AES key not available");
   }
@@ -75,7 +63,7 @@ export async function GET() {
 
         if (parts.length === 3 && parts[0].length === 16 && parts[1].length === 24) {
           try {
-            plaintext = await decryptValue(rawStatus, db);
+            plaintext = await decryptValue(rawStatus);
           } catch {
             plaintext = "Other";
           }
@@ -125,7 +113,7 @@ export async function GET() {
 
           if (parts.length === 3 && parts[0].length === 16 && parts[1].length === 24) {
             try {
-              plaintext = await decryptValue(rawStatus, db);
+              plaintext = await decryptValue(rawStatus);
             } catch {
               plaintext = "Active";
             }

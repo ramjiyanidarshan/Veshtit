@@ -8,8 +8,8 @@ import { authApi } from "@/lib/api";
 interface NavbarProps {
   onImport?: () => void;
   onExport?: () => void;
-  onMenuToggle: () => void;
-  isMobileMenuOpen: boolean;
+  onMenuToggle?: () => void;
+  isMobileMenuOpen?: boolean;
 }
 
 const NAV_LINKS = [
@@ -77,26 +77,7 @@ export default function Navbar({
 
   return (
     <nav className="navbar">
-      {/* Hamburger — mobile only (accounts page only) */}
-      {isAccounts && (
-        <button
-          id="mobile-menu-btn"
-          className="btn btn-ghost btn-icon btn-hamburger"
-          onClick={onMenuToggle}
-          aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
-        >
-          {isMobileMenuOpen ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          )}
-        </button>
-      )}
+
 
       {/* Brand */}
       <Link href="/" className="navbar-brand">

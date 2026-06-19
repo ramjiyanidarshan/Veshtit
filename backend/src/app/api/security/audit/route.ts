@@ -6,14 +6,8 @@ import crypto from "crypto";
 const ALGORITHM = "aes-256-gcm";
 
 // ─── Decrypt helper ────────────────────────────────────────────────────────────
-async function getAesKey(db: Awaited<ReturnType<typeof getDb>>): Promise<Buffer> {
-  let hex: string | null = null;
-  try {
-    const doc = await db.collection("settings").findOne({ _id: "aes_encryption_key" } as never);
-    if (doc) hex = (doc as unknown as { value: string }).value;
-  } catch { /* ignore */ }
-  if (!hex) hex = await getSetting(SETTING_KEYS.AES_KEY, process.env.AES_ENCRYPTION_KEY).catch(() => null);
-  if (!hex) hex = process.env.AES_ENCRYPTION_KEY ?? null;
+async function getAesKey(): Promise<Buffer> {
+  const hex = await getSetting(SETTING_KEYS.AES_KEY);
   if (!hex || hex.length !== 64) throw new Error("AES key unavailable");
   return Buffer.from(hex, "hex");
 }
@@ -124,7 +118,7 @@ export async function GET() {
       rotationDays = Math.max(1, parseInt(v, 10) || 90);
     } catch { /* use default */ }
 
-    const key = await getAesKey(db);
+    const key = await getAesKey();
     const now = Date.now();
 
     const accounts = await db.collection("accounts")

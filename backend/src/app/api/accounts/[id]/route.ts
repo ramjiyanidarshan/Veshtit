@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccountModel } from "@/lib/model";
-import { encryptAttributes, decryptAttributes } from "@/lib/crypto";
+import { encryptAttributes, decryptAttributes, encrypt, decrypt } from "@/lib/crypto";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -19,11 +19,23 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
+    // Decrypt password history if present
+    let decryptedHistory: any = undefined;
+    if (account.passwordHistory) {
+      decryptedHistory = await Promise.all(
+        account.passwordHistory.map(async (h) => ({
+          password: await decrypt(h.password),
+          changedAt: h.changedAt,
+        }))
+      );
+    }
+
     return NextResponse.json({
       account: {
         ...account,
         _id: account._id?.toString(),
         attributes: await decryptAttributes(account.attributes),
+        passwordHistory: decryptedHistory,
       },
     });
   } catch (error) {
@@ -64,6 +76,32 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
+
+      // Fetch the existing account to detect password changes
+      const existing = await AccountModel.findById(id);
+      if (!existing) {
+        return NextResponse.json({ error: "Account not found" }, { status: 404 });
+      }
+
+      const decryptedExisting = await decryptAttributes(existing.attributes);
+      const oldPassKey = Object.keys(decryptedExisting).find((k) => k.toLowerCase() === "password");
+      const oldPassword = oldPassKey ? decryptedExisting[oldPassKey] : null;
+
+      const newPassKey = Object.keys(attributes).find((k) => k.toLowerCase() === "password");
+      const newPassword = newPassKey ? attributes[newPassKey] : null;
+
+      if (oldPassword && newPassword && oldPassword !== newPassword) {
+        const encryptedOld = await encrypt(oldPassword);
+        const historyEntry = {
+          password: encryptedOld,
+          changedAt: new Date(),
+        };
+        updateData.passwordHistory = [
+          ...(existing.passwordHistory || []),
+          historyEntry,
+        ];
+      }
+
       updateData.attributes = await encryptAttributes(attributes);
     }
 
@@ -73,11 +111,23 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
+    // Decrypt password history if present
+    let decryptedHistory: any = undefined;
+    if (updated.passwordHistory) {
+      decryptedHistory = await Promise.all(
+        updated.passwordHistory.map(async (h) => ({
+          password: await decrypt(h.password),
+          changedAt: h.changedAt,
+        }))
+      );
+    }
+
     return NextResponse.json({
       account: {
         ...updated,
         _id: updated._id?.toString(),
         attributes: await decryptAttributes(updated.attributes),
+        passwordHistory: decryptedHistory,
       },
     });
   } catch (error) {

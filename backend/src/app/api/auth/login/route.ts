@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { UserModel } from "@/lib/model";
-import { signToken, signTempToken, loadJwtSecret, buildAuthCookieHeader } from "@/lib/auth";
+import { signToken, signTempToken, buildAuthCookieHeader } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,9 +25,6 @@ export async function POST(request: NextRequest) {
     if (!isValid) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
-
-    // Prime the JWT secret cache so proxy.ts can read it synchronously
-    await loadJwtSecret();
 
     if (user.mfaEnabled) {
       const tempToken = await signTempToken({ username: user.username, mfaPending: true });

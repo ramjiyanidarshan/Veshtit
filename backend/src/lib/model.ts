@@ -17,6 +17,7 @@ export interface BaseDocument extends Document {
   _id?: ObjectId;
   serviceProvider: string;
   attributes: Record<string, string | null>;
+  passwordHistory?: { password: string; changedAt: Date }[];
   source: "manual" | "import";
   createdAt: Date;
   updatedAt: Date;

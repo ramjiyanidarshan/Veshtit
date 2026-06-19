@@ -3,8 +3,9 @@
  * Reads from the `settings` collection in MongoDB.
  * Each setting is stored as { _id: key, value: string, updatedAt: Date }.
  *
- * On first access, if the setting doesn't exist in DB, it bootstraps
- * from the .env variable (migration path).
+ * JWT secret and AES key are stored exclusively in the DB — no .env fallback.
+ * Other settings (e.g. password_rotation_days) may pass an envFallback
+ * for first-run defaults.
  *
  * Uses a process-level in-memory cache so DB is not hit on every request.
  * Call `invalidateSetting(key)` after writing to force a fresh DB read.

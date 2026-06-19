@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { accountsApi, exportApi, ApiError } from "@/lib/api";
 import type { Account, GroupedAccounts } from "@/lib/types";
 
 import Navbar from "@/components/Navbar";
-import ProviderList from "@/components/ProviderList";
 import AccountDetail from "@/components/AccountDetail";
 import AccountForm from "@/components/AccountForm";
 import ImportWizard from "@/components/ImportWizard";
+import ProviderIcon from "@/components/ProviderIcon";
 
 type ModalMode = "create" | "edit" | null;
+type FilterStatus = "all" | "Active" | "Disable" | "Deleted";
 
 interface Toast {
   id: number;
@@ -34,6 +35,10 @@ export default function DashboardPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<Account | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Search & filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+
   // Mobile state: sidebar drawer open/close, and whether we're viewing detail
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
@@ -45,6 +50,45 @@ export default function DashboardPage() {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   }
+
+  const filteredGrouped = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q && filterStatus === "all") return grouped;
+
+    const result: GroupedAccounts = {};
+    for (const [provider, accs] of Object.entries(grouped)) {
+      let filtered = accs;
+
+      if (filterStatus !== "all") {
+        filtered = filtered.filter((acc) => {
+          const status = Object.entries(acc.attributes).find(
+            ([k]) => k.toLowerCase() === "status"
+          )?.[1];
+          return status === filterStatus;
+        });
+      }
+
+      if (q) {
+        const providerMatch = provider.toLowerCase().includes(q);
+        if (!providerMatch) {
+          filtered = filtered.filter((acc) =>
+            Object.values(acc.attributes).some(
+              (v) => v && v.toLowerCase().includes(q)
+            )
+          );
+        }
+      }
+
+      if (filtered.length > 0) {
+        result[provider] = filtered;
+      }
+    }
+    return result;
+  }, [grouped, searchQuery, filterStatus]);
+
+  const isFiltered = searchQuery.trim() !== "" || filterStatus !== "all";
+  const filteredProviderCount = Object.keys(filteredGrouped).length;
+  const totalProviderCount = Object.keys(grouped).length;
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -66,13 +110,7 @@ export default function DashboardPage() {
     loadAccounts();
   }, [loadAccounts]);
 
-  // Auto-select first provider on desktop
-  useEffect(() => {
-    const providers = Object.keys(grouped);
-    if (providers.length > 0 && !selectedProvider) {
-      setSelectedProvider(providers.sort()[0]);
-    }
-  }, [grouped, selectedProvider]);
+
 
   // Close mobile menu on resize to desktop
   useEffect(() => {
@@ -185,24 +223,8 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Sidebar — always rendered; CSS controls visibility/drawer on mobile */}
-              <ProviderList
-                grouped={grouped}
-                selectedProvider={selectedProvider}
-                onSelect={handleProviderSelect}
-                onAddNew={() => {
-                  setEditingAccount(null);
-                  setIsMobileMenuOpen(false);
-                  setModalMode("create");
-                }}
-                isMobileOpen={isMobileMenuOpen}
-                onClose={() => setIsMobileMenuOpen(false)}
-              />
-
-              {/* Main content — CSS hides on mobile when mobileView==="list" */}
-              <div
-                className={`main-content-wrapper${mobileView === "list" ? " mobile-hide-detail" : ""}`}
-              >
+              {/* Main content */}
+              <div className="main-content-wrapper">
                 {selectedProvider ? (
                   <AccountDetail
                     accounts={selectedAccounts}
@@ -218,6 +240,138 @@ export default function DashboardPage() {
                     }}
                     onBack={handleMobileBack}
                   />
+                ) : Object.keys(grouped).length > 0 ? (
+                  <div className="main-panel font-sans">
+                    <div className="main-panel-header">
+                      <h2 className="main-panel-title">Service Providers</h2>
+                      <button
+                        id="add-account-card-view-btn"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setEditingAccount(null);
+                          setModalMode("create");
+                        }}
+                      >
+                        + Add Account
+                      </button>
+                    </div>
+
+                    {/* ── Search & Filter toolbar ── */}
+                    <div className="accounts-toolbar">
+                      <div className="accounts-search-wrap">
+                        <span className="accounts-search-icon">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                          </svg>
+                        </span>
+                        <input
+                          className="accounts-search-input"
+                          type="text"
+                          placeholder="Search providers or accounts..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          id="accounts-search"
+                          autoComplete="off"
+                        />
+                        {searchQuery && (
+                          <button
+                            className="accounts-search-clear"
+                            onClick={() => setSearchQuery("")}
+                            title="Clear search"
+                            type="button"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="filter-group">
+                        {(
+                          [
+                            { value: "all", label: "All" },
+                            { value: "Active", label: "Active" },
+                            { value: "Disable", label: "Disabled" },
+                            { value: "Deleted", label: "Deleted" },
+                          ] as { value: FilterStatus; label: string }[]
+                        ).map(({ value, label }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            className={`filter-chip${filterStatus === value ? ` active${value !== "all" ? ` status-${value.toLowerCase()}` : ""}` : ""}`}
+                            onClick={() => setFilterStatus(value)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {isFiltered && (
+                        <span className="accounts-results-count">
+                          {filteredProviderCount} of {totalProviderCount}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="main-panel-body">
+                      {filteredProviderCount === 0 ? (
+                        <div className="no-results-state">
+                          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--border-strong)" strokeWidth="1.5">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                          </svg>
+                          <p className="no-results-title">No providers match</p>
+                          <p className="no-results-desc">
+                            Try a different search term or clear the filters.
+                          </p>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => { setSearchQuery(""); setFilterStatus("all"); }}
+                          >
+                            Clear filters
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="provider-cards-grid">
+                          {Object.keys(filteredGrouped).sort().map((provider) => {
+                            const accountsForProv = filteredGrouped[provider] || [];
+                            const totalForProv = grouped[provider]?.length ?? accountsForProv.length;
+                            const count = accountsForProv.length;
+                            let firstUrl = null;
+                            for (const acc of accountsForProv) {
+                              if (acc.attributes["Url"] || acc.attributes["URL"] || acc.attributes["url"]) {
+                                firstUrl = acc.attributes["Url"] || acc.attributes["URL"] || acc.attributes["url"];
+                                break;
+                              }
+                            }
+
+                            return (
+                              <div
+                                key={provider}
+                                className="provider-card"
+                                onClick={() => handleProviderSelect(provider)}
+                                id={`provider-card-${provider.replace(/\s+/g, "-").toLowerCase()}`}
+                              >
+                                <div className="provider-card-icon-wrapper">
+                                  <ProviderIcon name={provider} url={firstUrl} size={42} />
+                                </div>
+                                <h3 className="provider-card-name">{provider}</h3>
+                                <p className="provider-card-count">
+                                  {isFiltered && count !== totalForProv
+                                    ? `${count} of ${totalForProv} accounts`
+                                    : `${count} ${count === 1 ? "account" : "accounts"}`}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div
                     className="main-panel"
@@ -231,8 +385,7 @@ export default function DashboardPage() {
                       <div className="empty-state-icon">🗂️</div>
                       <p className="empty-state-title">Welcome to Veshtit</p>
                       <p className="empty-state-desc">
-                        Select a service provider from the sidebar, or create your
-                        first account to get started.
+                        Create your first account to get started.
                       </p>
                       <button
                         id="get-started-btn"
@@ -260,8 +413,15 @@ export default function DashboardPage() {
         >
           <div className="modal">
             <div className="modal-header">
-              <h2 className="modal-title">
-                {modalMode === "create" ? "New Account" : "Edit Account"}
+              <h2 className="modal-title" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {modalMode === "edit" && editingAccount ? (
+                  <>
+                    <ProviderIcon name={editingAccount.serviceProvider} size={22} />
+                    Edit {editingAccount.serviceProvider}
+                  </>
+                ) : (
+                  "New Account"
+                )}
               </h2>
               <button
                 id="close-form-modal"
@@ -289,12 +449,41 @@ export default function DashboardPage() {
                 initialData={editingAccount}
                 initialProvider={selectedProvider ?? ""}
                 onSubmit={modalMode === "create" ? handleCreate : handleUpdate}
-                onCancel={() => {
+              />
+            </div>
+            <div className="modal-footer">
+              <button
+                id="form-cancel-btn"
+                type="button"
+                className="btn btn-secondary"
+                disabled={isSaving}
+                onClick={() => {
                   setModalMode(null);
                   setEditingAccount(null);
                 }}
-                isLoading={isSaving}
-              />
+              >
+                Cancel
+              </button>
+              <button
+                id="form-submit-btn"
+                type="submit"
+                form="account-form"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Saving...
+                  </>
+                ) : modalMode === "create" ? (
+                  "Create Account"
+                ) : (
+                  "Update Account"
+                )}
+              </button>
             </div>
           </div>
         </div>

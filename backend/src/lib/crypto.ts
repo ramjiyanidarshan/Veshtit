@@ -4,13 +4,11 @@ import { getSetting, SETTING_KEYS } from "./settings";
 const ALGORITHM = "aes-256-gcm";
 
 /**
- * Resolves the AES-256-GCM key from DB (falls back to .env on first run).
+ * Resolves the AES-256-GCM key from DB.
+ * Throws if the key has not been set in the database.
  */
 async function resolveKey(): Promise<Buffer> {
-  const hex = await getSetting(
-    SETTING_KEYS.AES_KEY,
-    process.env.AES_ENCRYPTION_KEY
-  );
+  const hex = await getSetting(SETTING_KEYS.AES_KEY);
   if (!hex || hex.length !== 64) {
     throw new Error(
       "AES encryption key must be a 64-character hex string (32 bytes)."
@@ -171,4 +169,30 @@ export async function reEncryptAttributes(
   }
 
   return result;
+}
+
+/**
+ * Decrypts a value with a specific AES key Buffer.
+ */
+export function decryptWithKey(encryptedString: string, key: Buffer): string {
+  const parts = encryptedString.split(":");
+  if (parts.length !== 3) throw new Error("Not encrypted");
+  const [ivB64, authTagB64, ciphertextB64] = parts;
+  const iv = Buffer.from(ivB64, "base64");
+  const authTag = Buffer.from(authTagB64, "base64");
+  const ciphertext = Buffer.from(ciphertextB64, "base64");
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
+
+/**
+ * Encrypts a value with a specific AES key Buffer.
+ */
+export function encryptWithKey(plaintext: string, key: Buffer): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return [iv.toString("base64"), authTag.toString("base64"), ciphertext.toString("base64")].join(":");
 }

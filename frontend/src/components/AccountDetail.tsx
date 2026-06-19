@@ -124,6 +124,80 @@ function AttributeValue({ attrKey, value }: AttributeValueProps) {
   );
 }
 
+interface PasswordHistoryCollapseProps {
+  history: { password: string; changedAt: string }[];
+}
+
+function PasswordHistoryCollapse({ history }: PasswordHistoryCollapseProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", marginTop: "0.25rem" }}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        style={{
+          padding: "2px 6px",
+          fontSize: "0.725rem",
+          alignSelf: "flex-start",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          color: "var(--text-secondary)",
+        }}
+        onClick={() => setIsOpen(!isOpen)}
+        title="Show previous passwords"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        {isOpen ? "Hide History" : `History (${history.length})`}
+      </button>
+      
+      {isOpen && (
+        <div
+          className="password-history-list"
+          style={{
+            marginTop: "0.5rem",
+            padding: "0.625rem 0.75rem",
+            background: "rgba(0, 0, 0, 0.15)",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>
+            Previous Passwords
+          </div>
+          {history.slice().reverse().map((h, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                paddingBottom: i < history.length - 1 ? "0.375rem" : "0",
+                borderBottom: i < history.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none",
+              }}
+            >
+              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                {new Date(h.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}:
+              </span>
+              <AttributeValue attrKey="password" value={h.password} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AccountDetail({
   accounts,
   providerName,
@@ -138,7 +212,7 @@ export default function AccountDetail({
       <div className="main-panel-header">
           {/* Mobile back button */}
           <button
-            className="btn btn-ghost btn-sm btn-icon mobile-back-btn"
+            className="btn btn-ghost btn-sm btn-icon back-btn"
             onClick={onBack}
             aria-label="Back to providers"
             style={{ marginRight: "0.25rem" }}
@@ -168,7 +242,7 @@ export default function AccountDetail({
       <div className="main-panel-header">
         {/* Mobile back button */}
         <button
-          className="btn btn-ghost btn-sm btn-icon mobile-back-btn"
+          className="btn btn-ghost btn-sm btn-icon back-btn"
           onClick={onBack}
           aria-label="Back to providers"
           style={{ marginRight: "0.25rem" }}
@@ -262,12 +336,22 @@ export default function AccountDetail({
             <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "0.75rem" }}>
               {Object.entries(account.attributes)
                 .filter(([key]) => key.toLowerCase() !== "status")
-                .map(([key, value]) => (
-                <div key={key} className="attribute-row">
-                  <span className="attribute-key">{key}</span>
-                  <AttributeValue attrKey={key} value={value} />
-                </div>
-              ))}
+                .map(([key, value]) => {
+                  const isPass = isPasswordKey(key);
+                  return (
+                    <div key={key} style={{ display: "flex", flexDirection: "column" }}>
+                      <div className="attribute-row">
+                        <span className="attribute-key">{key}</span>
+                        <AttributeValue attrKey={key} value={value} />
+                      </div>
+                      {isPass && account.passwordHistory && account.passwordHistory.length > 0 && (
+                        <div className="history-wrapper">
+                          <PasswordHistoryCollapse history={account.passwordHistory} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         ))}

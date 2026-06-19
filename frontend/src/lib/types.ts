@@ -4,6 +4,7 @@ export interface Account {
   _id: string;
   serviceProvider: string;
   attributes: Record<string, string | null>;
+  passwordHistory?: { password: string; changedAt: string }[];
   createdAt: string;
   updatedAt: string;
 }

@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
 
   let oldKeyHex: string;
   try {
-    oldKeyHex = await getSetting(SETTING_KEYS.AES_KEY, process.env.AES_ENCRYPTION_KEY);
+    oldKeyHex = await getSetting(SETTING_KEYS.AES_KEY);
   } catch {
-    return NextResponse.json({ error: "No current AES key found." }, { status: 500 });
+    return NextResponse.json({ error: "No current AES key found in database." }, { status: 500 });
   }
 
   if (oldKeyHex === newKey) {
@@ -113,9 +113,30 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        let newHistory: any = undefined;
+        if (account.passwordHistory && Array.isArray(account.passwordHistory)) {
+          newHistory = [];
+          for (const h of account.passwordHistory) {
+            try {
+              const plaintext = decryptWithKey(h.password, oldKey);
+              newHistory.push({
+                password: encryptWithKey(plaintext, newKeyBuf),
+                changedAt: h.changedAt,
+              });
+            } catch {
+              newHistory.push(h);
+            }
+          }
+        }
+
+        const setFields: any = { attributes: newAttrs, updatedAt: new Date() };
+        if (newHistory !== undefined) {
+          setFields.passwordHistory = newHistory;
+        }
+
         await col.updateOne(
           { _id: account._id },
-          { $set: { attributes: newAttrs, updatedAt: new Date() } }
+          { $set: setFields }
         );
         reEncrypted++;
         send({ type: "progress", done: reEncrypted, total });

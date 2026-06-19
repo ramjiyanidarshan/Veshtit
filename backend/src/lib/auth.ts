@@ -10,7 +10,7 @@ const TOKEN_EXPIRY = "7d";
 // When the secret is rotated, invalidateJwtCache() clears it so the next
 // route-handler call will reload from DB.
 
-let _cachedSecret: string | null = process.env.JWT_SECRET ?? null;
+let _cachedSecret: string | null = null;
 
 /**
  * Returns the cached JWT secret (may be null if not yet loaded).
@@ -21,18 +21,30 @@ export function getJwtSecretSync(): string | null {
 }
 
 /**
- * Loads the JWT secret from DB (with .env bootstrap), caches it,
- * and returns it. Call this at the top of any route that uses JWT.
+ * Loads the JWT secret from DB, caches it, and returns it.
+ * If no secret exists in the DB yet (first run after migration from env),
+ * generates a cryptographically secure random one and persists it.
  */
 export async function loadJwtSecret(): Promise<string> {
   if (_cachedSecret) return _cachedSecret;
 
   // Lazy import to avoid importing DB code in edge middleware
-  const { getSetting, SETTING_KEYS } = await import("./settings");
-  const secret = await getSetting(
-    SETTING_KEYS.JWT_SECRET,
-    process.env.JWT_SECRET
-  );
+  const { getSetting, setSetting, SETTING_KEYS } = await import("./settings");
+
+  let secret: string;
+  try {
+    secret = await getSetting(SETTING_KEYS.JWT_SECRET);
+  } catch {
+    // Not in DB yet — generate a fresh secret and persist it permanently
+    const { randomBytes } = await import("crypto");
+    secret = randomBytes(64).toString("hex");
+    await setSetting(SETTING_KEYS.JWT_SECRET, secret);
+    console.warn(
+      "[Veshtit] JWT secret was not in DB — generated and stored a new one. " +
+      "Any existing login sessions are now invalid; please log in again."
+    );
+  }
+
   _cachedSecret = secret;
   return secret;
 }
@@ -73,13 +85,12 @@ export async function signTempToken(
 }
 
 /**
- * Verifies a JWT token using the cached secret.
+ * Verifies a JWT token. Loads the secret from DB if not already cached.
  * Returns the payload on success, null on failure.
  */
-export function verifyToken(token: string): JwtPayload | null {
+export async function verifyToken(token: string): Promise<JwtPayload | null> {
   try {
-    const secret = getJwtSecretSync();
-    if (!secret) return null;
+    const secret = await loadJwtSecret();
     return jwt.verify(token, secret) as JwtPayload;
   } catch {
     return null;

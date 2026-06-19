@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccountModel } from "@/lib/model";
-import { encryptAttributes, decryptAttributes } from "@/lib/crypto";
+import { encryptAttributes, decryptAttributes, decrypt } from "@/lib/crypto";
 
 /**
  * GET /api/accounts
@@ -11,11 +11,24 @@ export async function GET() {
     const accounts = await AccountModel.findAll();
 
     const decrypted = await Promise.all(
-      accounts.map(async (account) => ({
-        ...account,
-        _id: account._id?.toString(),
-        attributes: await decryptAttributes(account.attributes),
-      }))
+      accounts.map(async (account) => {
+        let decryptedHistory: any = undefined;
+        if (account.passwordHistory) {
+          decryptedHistory = await Promise.all(
+            account.passwordHistory.map(async (h) => ({
+              password: await decrypt(h.password),
+              changedAt: h.changedAt,
+            }))
+          );
+        }
+
+        return {
+          ...account,
+          _id: account._id?.toString(),
+          attributes: await decryptAttributes(account.attributes),
+          passwordHistory: decryptedHistory,
+        };
+      })
     );
 
     // Group by serviceProvider
