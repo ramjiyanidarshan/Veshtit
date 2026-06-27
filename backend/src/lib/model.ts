@@ -18,6 +18,9 @@ export interface BaseDocument extends Document {
   serviceProvider: string;
   attributes: Record<string, string | null>;
   passwordHistory?: { password: string; changedAt: Date }[];
+  passwordLastChangedAt?: Date;
+  isFavorite?: boolean;
+  tags?: string[];
   source: "manual" | "import";
   createdAt: Date;
   updatedAt: Date;
@@ -171,3 +174,17 @@ export interface UserDocument extends MinimalDocument {
 }
 
 export const UserModel = new Model<UserDocument>("users");
+
+/** Model for the audit log collection */
+export interface AuditLogDocument extends MinimalDocument {
+  _id?: ObjectId;
+  action: string;
+  entity: "account" | "settings" | "auth" | "import" | "export";
+  entityId?: string;
+  details: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const AuditLogModel = new Model<AuditLogDocument>("auditLogs");

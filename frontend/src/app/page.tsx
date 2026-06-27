@@ -22,15 +22,16 @@ interface SecurityAudit {
   overallScore: number;
   scoreLabel: "Critical" | "Poor" | "Fair" | "Good" | "Excellent";
   rotationDays: number;
+  hibpAvailable?: boolean;
   summary: {
     total: number;
     veryWeak: number; weak: number; moderate: number; strong: number; veryStrong: number;
-    needsRotation: number; duplicates: number;
+    needsRotation: number; duplicates: number; breached?: number;
   };
   issues: Array<{
     _id: string; provider: string; title?: string | null; score: number; label: string;
     tips: string[]; daysSinceUpdate: number | null;
-    needsRotation: boolean; isDuplicate: boolean;
+    needsRotation: boolean; isDuplicate: boolean; isBreached?: boolean; breachCount?: number;
   }>;
 }
 
@@ -64,11 +65,11 @@ function scoreColor(s: number) {
 }
 
 function scoreLabelColor(label: string) {
-  return { Excellent: "#10b981", Good: "#34d399", Fair: "#f59e0b", Poor: "#f97316", Critical: "#ef4444" }[label] ?? "#6366f1";
+  return { Excellent: "#10b981", Good: "#34d399", Fair: "#f59e0b", Poor: "#f97316", Critical: "#ef4444" }[label] ?? "#FF6B35";
 }
 
 function strengthColor(label: string) {
-  return { "Very Strong": "#10b981", Strong: "#34d399", Moderate: "#fbbf24", Weak: "#f97316", "Very Weak": "#ef4444" }[label] ?? "#6366f1";
+  return { "Very Strong": "#10b981", Strong: "#34d399", Moderate: "#fbbf24", Weak: "#f97316", "Very Weak": "#ef4444" }[label] ?? "#FF6B35";
 }
 
 // ─── Security Score Ring ──────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ function ScoreRing({ score, label }: { score: number; label: string }) {
   const filled = (score / 100) * circ;
   const color = scoreColor(score);
   return (
-    <div style={{ position: "relative", width: "136px", height: "136px" }}>
+    <div className="score-ring-wrap" style={{ position: "relative", width: "136px", height: "136px" }}>
       <svg viewBox="0 0 144 144" width="136" height="136" style={{ transform: "rotate(-90deg)" }}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="10" />
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="10"
@@ -102,7 +103,7 @@ function DonutChart({ active, disable, deleted, other, total }: DonutProps) {
   const circ = 2 * Math.PI * r;
   const segments = [
     { value: active, color: "#10b981" }, { value: disable, color: "#fbbf24" },
-    { value: deleted, color: "#ef4444" }, { value: other, color: "#6366f1" },
+    { value: deleted, color: "#ef4444" }, { value: other, color: "#FF6B35" },
   ].filter((s) => s.value > 0);
   let offset = 0;
   return (
@@ -159,6 +160,7 @@ export default function DashboardPage() {
 
   const total = stats?.totalAccounts ?? 0;
   const sb = stats?.statusBreakdown ?? { Active: 0, Disable: 0, Deleted: 0, Other: 0 };
+  const breachedCount = audit?.summary.breached ?? 0;
 
   const statCards = [
     { 
@@ -182,17 +184,24 @@ export default function DashboardPage() {
       filterParam: "?filter=Active",
       icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 
     },
-    { 
-      label: "Disabled Entries", 
-      value: sb.Disable, 
+    {
+      label: "Disabled Entries",
+      value: sb.Disable,
       colorClass: "stat-warning",
       filterParam: "?filter=Disable",
-      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg> 
+      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>
+    },
+    {
+      label: "Breached Passwords",
+      value: breachedCount,
+      colorClass: breachedCount > 0 ? "stat-danger" : "stat-success",
+      filterParam: "",
+      icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     },
   ];
 
   const displayIssues = audit ? (showAllIssues ? audit.issues : audit.issues.slice(0, 5)) : [];
-  const totalRisk = audit ? audit.issues.filter((a) => a.score < 40 || a.needsRotation || a.isDuplicate).length : 0;
+  const totalRisk = audit ? audit.issues.filter((a) => a.score < 40 || a.needsRotation || a.isDuplicate || a.isBreached).length : 0;
 
   // Global security suggestions - updated to link straight to the accounts list filters
   const suggestions: { icon: React.ReactNode; text: string; action: string; actionText: string }[] = [];
@@ -214,11 +223,19 @@ export default function DashboardPage() {
       });
     }
     if (audit.summary.duplicates > 0) {
-      suggestions.push({ 
-        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>, 
+      suggestions.push({
+        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>,
         text: `${audit.summary.duplicates} accounts share identical passwords. Use unique values for each.`,
         action: "/accounts?filter=duplicate",
         actionText: "Resolve Duplicates"
+      });
+    }
+    if ((audit.summary.breached ?? 0) > 0) {
+      suggestions.push({
+        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+        text: `${audit.summary.breached} password${audit.summary.breached === 1 ? " has" : "s have"} been found in known data breaches. Change them immediately.`,
+        action: "/accounts",
+        actionText: "Update Breached",
       });
     }
   }
@@ -356,7 +373,7 @@ export default function DashboardPage() {
                             { label: "Active",  value: sb.Active,  color: "#10b981", param: "?filter=Active" },
                             { label: "Disable", value: sb.Disable, color: "#fbbf24", param: "?filter=Disable" },
                             { label: "Deleted", value: sb.Deleted, color: "#ef4444", param: "?filter=Deleted" },
-                            { label: "Other",   value: sb.Other,   color: "#6366f1", param: "" },
+                            { label: "Other",   value: sb.Other,   color: "#FF6B35", param: "" },
                           ].map((item) => (
                             <div 
                               key={item.label} 
@@ -402,13 +419,14 @@ export default function DashboardPage() {
                             onClick={() => router.push(`/accounts?provider=${encodeURIComponent(issue.provider)}`)}
                             title="Click to locate this account"
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.85rem", flex: 1, minWidth: 0 }}>
+                            <div className="issue-row-main" style={{ display: "flex", alignItems: "center", gap: "0.85rem", flex: 1, minWidth: 0 }}>
                               <ProviderIcon name={issue.provider} size={36} />
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ fontWeight: 600, fontSize: "0.92rem", color: "var(--text-primary)" }}>
                                   {issue.provider} {issue.title ? `(${issue.title})` : ""}
                                 </div>
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "4px" }}>
+                                  {issue.isBreached && <span className="premium-tag premium-tag-danger">Breached {issue.breachCount && issue.breachCount > 1 ? `(${issue.breachCount.toLocaleString()}×)` : ""}</span>}
                                   {issue.isDuplicate && <span className="premium-tag premium-tag-danger">Duplicate</span>}
                                   {issue.needsRotation && <span className="premium-tag premium-tag-warning">Outdated ({issue.daysSinceUpdate}d old)</span>}
                                   {issue.tips.slice(0, 1).map((t, idx) => (
@@ -417,8 +435,8 @@ export default function DashboardPage() {
                                 </div>
                               </div>
                             </div>
-                            
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", paddingRight: "1rem" }}>
+
+                            <div className="issue-row-strength" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px", paddingRight: "0.5rem" }}>
                               <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: strengthColor(issue.label) }}>{issue.label}</span>
                               <div style={{ width: "80px", height: "4px", background: "var(--border-subtle)", borderRadius: "2px", overflow: "hidden" }}>
                                 <div style={{ width: `${issue.score}%`, height: "100%", background: strengthColor(issue.label) }} />

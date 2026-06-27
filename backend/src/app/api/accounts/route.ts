@@ -3,19 +3,46 @@ import { AccountModel } from "@/lib/model";
 import { encryptAttributes, decryptAttributes, decrypt } from "@/lib/crypto";
 import { analyseStrength } from "@/lib/passwordStrength";
 import { getSetting, SETTING_KEYS } from "@/lib/settings";
+import { appendAuditLog } from "@/lib/auditLog";
 import crypto from "crypto";
+
+async function getRotationDays(): Promise<number> {
+  try {
+    const v = await getSetting(SETTING_KEYS.PASSWORD_ROTATION_DAYS, "90");
+    return Math.max(1, parseInt(v, 10) || 90);
+  } catch {
+    return 90;
+  }
+}
+
+function computeExpiryStatus(
+  passwordLastChangedAt: Date | undefined,
+  createdAt: Date,
+  rotationDays: number
+): { isExpired: boolean; isExpiringSoon: boolean; daysUntilExpiry: number | null } {
+  const base = passwordLastChangedAt ?? createdAt;
+  const now = Date.now();
+  const daysSince = Math.floor((now - new Date(base).getTime()) / 86_400_000);
+  const daysUntilExpiry = rotationDays - daysSince;
+  return {
+    isExpired: daysUntilExpiry <= 0,
+    isExpiringSoon: daysUntilExpiry > 0 && daysUntilExpiry <= 14,
+    daysUntilExpiry,
+  };
+}
 
 /**
  * GET /api/accounts
- * Returns accounts (optionally filtered by weak, duplicate, or old passwords) with decrypted attributes.
+ * Returns accounts (optionally filtered) with decrypted attributes and expiry info.
  */
 export async function GET(request: NextRequest) {
   try {
+    const rotationDays = await getRotationDays();
     const accounts = await AccountModel.findAll();
 
     const decrypted = await Promise.all(
       accounts.map(async (account) => {
-        let decryptedHistory: any = undefined;
+        let decryptedHistory: unknown = undefined;
         if (account.passwordHistory) {
           decryptedHistory = await Promise.all(
             account.passwordHistory.map(async (h) => ({
@@ -25,11 +52,18 @@ export async function GET(request: NextRequest) {
           );
         }
 
+        const expiry = computeExpiryStatus(
+          account.passwordLastChangedAt,
+          account.createdAt,
+          rotationDays
+        );
+
         return {
           ...account,
           _id: account._id?.toString(),
           attributes: await decryptAttributes(account.attributes),
           passwordHistory: decryptedHistory,
+          ...expiry,
         };
       })
     );
@@ -46,14 +80,10 @@ export async function GET(request: NextRequest) {
           break;
         }
       }
-      return {
-        account,
-        pwdPlain,
-        hasPasswordField,
-      };
+      return { account, pwdPlain, hasPasswordField };
     });
 
-    // Detect duplicate passwords (hash-based, same as in security audit)
+    // Detect duplicate passwords
     const pwdHashCount: Record<string, number> = {};
     const hashedAccounts = accountsWithPwd.map(({ account, pwdPlain, hasPasswordField }) => {
       let pwdHash: string | null = null;
@@ -61,78 +91,72 @@ export async function GET(request: NextRequest) {
         pwdHash = crypto.createHash("sha256").update(pwdPlain).digest("hex");
         pwdHashCount[pwdHash] = (pwdHashCount[pwdHash] ?? 0) + 1;
       }
-      return {
-        account,
-        pwdPlain,
-        pwdHash,
-        hasPasswordField,
-      };
+      return { account, pwdPlain, pwdHash, hasPasswordField };
     });
 
     const url = new URL(request.url);
     const filter = url.searchParams.get("filter");
+    const tagFilter = url.searchParams.get("tag");
 
     let filtered = hashedAccounts;
 
     if (filter === "weak") {
       filtered = hashedAccounts.filter(({ pwdPlain, hasPasswordField }) => {
         if (!hasPasswordField) return false;
-        if (!pwdPlain) return true; // Treat empty password field as weak
+        if (!pwdPlain) return true;
         const strength = analyseStrength(pwdPlain);
         return strength.label === "Weak" || strength.label === "Very Weak";
       });
     } else if (filter === "duplicate") {
-      filtered = hashedAccounts.filter(({ pwdHash }) => {
-        return pwdHash ? pwdHashCount[pwdHash] > 1 : false;
-      });
+      filtered = hashedAccounts.filter(({ pwdHash }) =>
+        pwdHash ? pwdHashCount[pwdHash] > 1 : false
+      );
     } else if (filter === "old") {
-      let rotationDays = 90;
-      try {
-        const v = await getSetting(SETTING_KEYS.PASSWORD_ROTATION_DAYS, "90");
-        rotationDays = Math.max(1, parseInt(v, 10) || 90);
-      } catch { /* use default */ }
-      const now = Date.now();
-
-      filtered = hashedAccounts.filter(({ account }) => {
-        const lastUpdate = account.updatedAt
-          ? new Date(account.updatedAt).getTime()
-          : account.createdAt ? new Date(account.createdAt).getTime() : null;
-        const daysSinceUpdate = lastUpdate ? Math.floor((now - lastUpdate) / 86_400_000) : null;
-        return daysSinceUpdate !== null && daysSinceUpdate >= rotationDays;
-      });
+      filtered = hashedAccounts.filter(({ account }) => account.isExpired);
+    } else if (filter === "favorites") {
+      filtered = hashedAccounts.filter(({ account }) => account.isFavorite === true);
+    } else if (filter === "expiring") {
+      filtered = hashedAccounts.filter(({ account }) => account.isExpiringSoon || account.isExpired);
     }
 
-    const finalAccounts = filtered.map((f) => f.account);
+    if (tagFilter) {
+      filtered = filtered.filter(({ account }) =>
+        Array.isArray(account.tags) && account.tags.includes(tagFilter)
+      );
+    }
+
+    // Sort: favorites first, then alphabetically by serviceProvider
+    const finalAccounts = filtered
+      .map((f) => f.account)
+      .sort((a, b) => {
+        if (a.isFavorite && !b.isFavorite) return -1;
+        if (!a.isFavorite && b.isFavorite) return 1;
+        return (a.serviceProvider as string).localeCompare(b.serviceProvider as string);
+      });
 
     // Group by serviceProvider
     const grouped: Record<string, typeof finalAccounts> = {};
     for (const account of finalAccounts) {
-      if (!grouped[account.serviceProvider]) {
-        grouped[account.serviceProvider] = [];
-      }
-      grouped[account.serviceProvider].push(account);
+      const sp = account.serviceProvider as string;
+      if (!grouped[sp]) grouped[sp] = [];
+      grouped[sp].push(account);
     }
 
     return NextResponse.json({ accounts: finalAccounts, grouped });
   } catch (error) {
     console.error("GET /api/accounts error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch accounts" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch accounts" }, { status: 500 });
   }
 }
 
 /**
  * POST /api/accounts
  * Creates a new account entry with encrypted attributes.
- *
- * Body: { serviceProvider: string, attributes: Record<string, string | null> }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { serviceProvider, attributes } = body;
+    const { serviceProvider, attributes, tags } = body;
 
     if (!serviceProvider || typeof serviceProvider !== "string") {
       return NextResponse.json(
@@ -150,21 +174,36 @@ export async function POST(request: NextRequest) {
 
     const encryptedAttributes = await encryptAttributes(attributes);
 
+    // Detect if any password field is present to set passwordLastChangedAt
+    const hasPassword = Object.keys(attributes).some((k) =>
+      ["password", "pass", "secret", "pin", "token", "key", "passcode"].some((p) =>
+        k.toLowerCase().includes(p)
+      )
+    );
+
     const newAccount = await AccountModel.insertOne({
       serviceProvider,
       attributes: encryptedAttributes,
+      tags: Array.isArray(tags) ? tags.map(String) : [],
+      isFavorite: false,
+      passwordLastChangedAt: hasPassword ? new Date() : undefined,
       source: "manual",
     });
 
-    const sessionId = request.headers.get("x-session-id");
-    if (sessionId) {
-      const { appendAuditEntry } = await import("@/lib/session");
-      await appendAuditEntry(
-        sessionId,
-        "account.created",
-        `Created account for ${serviceProvider}`
-      );
-    }
+    await appendAuditLog({
+      action: "account.created",
+      entity: "account",
+      entityId: newAccount._id?.toString(),
+      details: `Created account for ${serviceProvider}`,
+      metadata: { serviceProvider, tags },
+    });
+
+    const rotationDays = await getRotationDays();
+    const expiry = computeExpiryStatus(
+      newAccount.passwordLastChangedAt,
+      newAccount.createdAt,
+      rotationDays
+    );
 
     return NextResponse.json(
       {
@@ -172,15 +211,13 @@ export async function POST(request: NextRequest) {
           ...newAccount,
           _id: newAccount._id?.toString(),
           attributes: await decryptAttributes(newAccount.attributes),
+          ...expiry,
         },
       },
       { status: 201 }
     );
   } catch (error) {
     console.error("POST /api/accounts error:", error);
-    return NextResponse.json(
-      { error: "Failed to create account" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
   }
 }

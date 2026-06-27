@@ -6,6 +6,8 @@ import type {
   ImportEntry,
   ConflictDecision,
   ImportResolveResponse,
+  AuditLogsResponse,
+  TagsResponse,
 } from "./types";
 
 const BACKEND_URL =
@@ -126,27 +128,45 @@ export const sessionsApi = {
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export const accountsApi = {
-  list: (filter?: string) => request<AccountsResponse>(`/api/accounts${filter ? `?filter=${filter}` : ""}`),
+  list: (filter?: string, tag?: string) => {
+    const params = new URLSearchParams();
+    if (filter) params.set("filter", filter);
+    if (tag) params.set("tag", tag);
+    const qs = params.toString();
+    return request<AccountsResponse>(`/api/accounts${qs ? `?${qs}` : ""}`);
+  },
 
   get: (id: string) =>
     request<{ account: Account }>(`/api/accounts/${id}`),
 
   create: (
     serviceProvider: string,
-    attributes: Record<string, string | null>
+    attributes: Record<string, string | null>,
+    tags?: string[]
   ) =>
     request<{ account: Account }>("/api/accounts", {
       method: "POST",
-      body: JSON.stringify({ serviceProvider, attributes }),
+      body: JSON.stringify({ serviceProvider, attributes, tags }),
     }),
 
   update: (
     id: string,
-    data: { serviceProvider?: string; attributes?: Record<string, string | null> }
+    data: {
+      serviceProvider?: string;
+      attributes?: Record<string, string | null>;
+      tags?: string[];
+      isFavorite?: boolean;
+    }
   ) =>
     request<{ account: Account }>(`/api/accounts/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
+    }),
+
+  toggleFavorite: (id: string, isFavorite: boolean) =>
+    request<{ account: Account }>(`/api/accounts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ isFavorite }),
     }),
 
   delete: (id: string) =>
@@ -201,6 +221,24 @@ export const exportApi = {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+};
+
+// ─── Tags ─────────────────────────────────────────────────────────────────────
+
+export const tagsApi = {
+  list: () => request<TagsResponse>("/api/tags"),
+};
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+export const auditLogsApi = {
+  list: (limit?: number, entity?: string) => {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    if (entity) params.set("entity", entity);
+    const qs = params.toString();
+    return request<AuditLogsResponse>(`/api/audit-logs${qs ? `?${qs}` : ""}`);
   },
 };
 

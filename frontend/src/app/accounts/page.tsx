@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { accountsApi, exportApi, ApiError } from "@/lib/api";
+import { accountsApi, tagsApi, exportApi, ApiError } from "@/lib/api";
 import type { Account, GroupedAccounts } from "@/lib/types";
 
 import Navbar from "@/components/Navbar";
@@ -13,6 +13,7 @@ import ProviderIcon from "@/components/ProviderIcon";
 
 type ModalMode = "create" | "edit" | null;
 type FilterStatus = "all" | "Active" | "Disable" | "Deleted";
+type BackendFilter = "weak" | "duplicate" | "old" | "favorites" | "expiring" | null;
 
 interface Toast {
   id: number;
@@ -38,10 +39,13 @@ export default function DashboardPage() {
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const [activeBackendFilter, setActiveBackendFilter] = useState<string | null>(null);
+  const [activeBackendFilter, setActiveBackendFilter] = useState<BackendFilter>(null);
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
 
-  // Mobile state: sidebar drawer open/close, and whether we're viewing detail
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Tags
+  const [allTags, setAllTags] = useState<string[]>([]);
+
+  // Mobile state
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
   function addToast(type: Toast["type"], message: string) {
@@ -54,7 +58,7 @@ export default function DashboardPage() {
 
   const filteredGrouped = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q && filterStatus === "all") return grouped;
+    if (!q && filterStatus === "all" && !activeTagFilter) return grouped;
 
     const result: GroupedAccounts = {};
     for (const [provider, accs] of Object.entries(grouped)) {
@@ -67,6 +71,12 @@ export default function DashboardPage() {
           )?.[1];
           return status === filterStatus;
         });
+      }
+
+      if (activeTagFilter) {
+        filtered = filtered.filter(
+          (acc) => Array.isArray(acc.tags) && acc.tags.includes(activeTagFilter)
+        );
       }
 
       if (q) {
@@ -85,29 +95,34 @@ export default function DashboardPage() {
       }
     }
     return result;
-  }, [grouped, searchQuery, filterStatus]);
+  }, [grouped, searchQuery, filterStatus, activeTagFilter]);
 
-  const isFiltered = searchQuery.trim() !== "" || filterStatus !== "all";
+  const isFiltered = searchQuery.trim() !== "" || filterStatus !== "all" || !!activeTagFilter;
   const filteredProviderCount = Object.keys(filteredGrouped).length;
   const totalProviderCount = Object.keys(grouped).length;
 
-  const loadAccounts = useCallback(async (forcedFilter?: string | null) => {
+  const loadAccounts = useCallback(async (forcedFilter?: BackendFilter | undefined, forcedTag?: string | null) => {
     try {
       setIsLoading(true);
       let filter: string | undefined = undefined;
+      let tag: string | undefined = undefined;
 
       if (forcedFilter !== undefined) {
         filter = forcedFilter || undefined;
       } else if (typeof window !== "undefined") {
         const params = new URLSearchParams(window.location.search);
         const filterParam = params.get("filter");
-        if (filterParam === "weak" || filterParam === "duplicate" || filterParam === "old") {
+        if (filterParam === "weak" || filterParam === "duplicate" || filterParam === "old" || filterParam === "favorites" || filterParam === "expiring") {
           filter = filterParam;
         }
       }
 
-      setActiveBackendFilter(filter || null);
-      const data = await accountsApi.list(filter);
+      if (forcedTag !== undefined) {
+        tag = forcedTag || undefined;
+      }
+
+      setActiveBackendFilter((filter as BackendFilter) || null);
+      const data = await accountsApi.list(filter, tag);
       setAccounts(data.accounts);
       setGrouped(data.grouped);
     } catch (err) {
@@ -121,6 +136,13 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  const loadTags = useCallback(async () => {
+    try {
+      const data = await tagsApi.list();
+      setAllTags(data.tags);
+    } catch { /* ignore */ }
+  }, []);
+
   const handleClearBackendFilter = useCallback(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -132,9 +154,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadAccounts();
-  }, [loadAccounts]);
+    loadTags();
+  }, [loadAccounts, loadTags]);
 
-  // Apply URL query parameters on load to support direct navigation/deep-linking from the dashboard
   useEffect(() => {
     if (!isLoading && Object.keys(grouped).length > 0 && typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -157,23 +179,9 @@ export default function DashboardPage() {
     }
   }, [isLoading, grouped]);
 
-
-
-  // Close mobile menu on resize to desktop
-  useEffect(() => {
-    function onResize() {
-      if (window.innerWidth > 768) {
-        setIsMobileMenuOpen(false);
-      }
-    }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
   function handleProviderSelect(provider: string) {
     setSelectedProvider(provider);
-    setMobileView("detail"); // switch to detail view on mobile
-    setIsMobileMenuOpen(false);
+    setMobileView("detail");
   }
 
   function handleMobileBack() {
@@ -183,12 +191,14 @@ export default function DashboardPage() {
 
   async function handleCreate(
     serviceProvider: string,
-    attributes: Record<string, string | null>
+    attributes: Record<string, string | null>,
+    tags?: string[]
   ) {
     setIsSaving(true);
     try {
-      await accountsApi.create(serviceProvider, attributes);
+      await accountsApi.create(serviceProvider, attributes, tags);
       await loadAccounts();
+      await loadTags();
       setSelectedProvider(serviceProvider);
       setMobileView("detail");
       setModalMode(null);
@@ -202,13 +212,15 @@ export default function DashboardPage() {
 
   async function handleUpdate(
     serviceProvider: string,
-    attributes: Record<string, string | null>
+    attributes: Record<string, string | null>,
+    tags?: string[]
   ) {
     if (!editingAccount) return;
     setIsSaving(true);
     try {
-      await accountsApi.update(editingAccount._id, { serviceProvider, attributes });
+      await accountsApi.update(editingAccount._id, { serviceProvider, attributes, tags });
       await loadAccounts();
+      await loadTags();
       setSelectedProvider(serviceProvider);
       setModalMode(null);
       setEditingAccount(null);
@@ -217,6 +229,16 @@ export default function DashboardPage() {
       addToast("error", "Failed to update account");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleToggleFavorite(account: Account) {
+    try {
+      await accountsApi.toggleFavorite(account._id, !account.isFavorite);
+      await loadAccounts(activeBackendFilter);
+      addToast("success", account.isFavorite ? "Removed from favorites" : "Added to favorites");
+    } catch {
+      addToast("error", "Failed to update favorite");
     }
   }
 
@@ -242,14 +264,39 @@ export default function DashboardPage() {
 
   const selectedAccounts = selectedProvider ? (grouped[selectedProvider] ?? []) : [];
 
+  // Derive expiry stats for the current view
+  const expiringCount = accounts.filter((a) => a.isExpiringSoon || a.isExpired).length;
+  const favoriteCount = accounts.filter((a) => a.isFavorite).length;
+
+  const BACKEND_FILTER_LABELS: Record<string, { icon: React.ReactNode; text: string }> = {
+    weak: {
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5l-.5-.5"/></svg>,
+      text: "Showing only accounts with weak passwords needing update.",
+    },
+    duplicate: {
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>,
+      text: "Showing only accounts with duplicate passwords.",
+    },
+    old: {
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      text: "Showing only accounts that require password rotation.",
+    },
+    favorites: {
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>,
+      text: "Showing only favorited accounts.",
+    },
+    expiring: {
+      icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+      text: "Showing accounts with expiring or expired passwords.",
+    },
+  };
+
   return (
     <>
       <div className="app-shell">
         <Navbar
           onImport={() => setShowImport(true)}
           onExport={handleExport}
-          onMenuToggle={() => setIsMobileMenuOpen((v) => !v)}
-          isMobileMenuOpen={isMobileMenuOpen}
         />
 
         <div className="app-body">
@@ -270,7 +317,6 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Main content */}
               <div className="main-content-wrapper">
                 {selectedProvider ? (
                   <AccountDetail
@@ -286,6 +332,7 @@ export default function DashboardPage() {
                       setModalMode("create");
                     }}
                     onBack={handleMobileBack}
+                    onToggleFavorite={handleToggleFavorite}
                   />
                 ) : Object.keys(grouped).length > 0 ? (
                   <div className="main-panel font-sans">
@@ -302,6 +349,40 @@ export default function DashboardPage() {
                         + Add Account
                       </button>
                     </div>
+
+                    {/* ── Quick filters bar (Favorites / Expiring) ── */}
+                    {(favoriteCount > 0 || expiringCount > 0) && !activeBackendFilter && (
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", padding: "0 0 0.75rem 0" }}>
+                        {favoriteCount > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#fbbf24" }}
+                            onClick={() => loadAccounts("favorites")}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                            {favoriteCount} Favorite{favoriteCount !== 1 ? "s" : ""}
+                          </button>
+                        )}
+                        {expiringCount > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "#f43f5e" }}
+                            onClick={() => loadAccounts("expiring")}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                              <line x1="12" y1="9" x2="12" y2="13"/>
+                              <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            {expiringCount} Password{expiringCount !== 1 ? "s" : ""} Expiring
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* ── Search & Filter toolbar ── */}
                     <div className="accounts-toolbar">
@@ -363,6 +444,39 @@ export default function DashboardPage() {
                       )}
                     </div>
 
+                    {/* ── Tag filter chips ── */}
+                    {allTags.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", flexWrap: "wrap", paddingBottom: "0.75rem" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ flexShrink: 0 }}>
+                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                          <line x1="7" y1="7" x2="7.01" y2="7" />
+                        </svg>
+                        {allTags.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            className={`filter-chip${activeTagFilter === tag ? " active" : ""}`}
+                            style={{ fontSize: "0.75rem", padding: "2px 10px" }}
+                            onClick={() =>
+                              setActiveTagFilter((prev) => (prev === tag ? null : tag))
+                            }
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                        {activeTagFilter && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: "0.72rem", padding: "2px 8px", opacity: 0.7 }}
+                            onClick={() => setActiveTagFilter(null)}
+                          >
+                            Clear tag
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <div className="main-panel-body">
                       {activeBackendFilter && (
                         <div style={{
@@ -379,25 +493,15 @@ export default function DashboardPage() {
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                             <span style={{ fontSize: "1.1rem" }}>
-                              {activeBackendFilter === "weak" ? (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5l-.5-.5"/></svg>
-                              ) : activeBackendFilter === "duplicate" ? (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                              ) : (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                              )}
+                              {BACKEND_FILTER_LABELS[activeBackendFilter]?.icon}
                             </span>
-                            <span>
-                              {activeBackendFilter === "weak" && "Showing only accounts with weak passwords needing update."}
-                              {activeBackendFilter === "duplicate" && "Showing only accounts with duplicate passwords that share values."}
-                              {activeBackendFilter === "old" && "Showing only accounts that require password rotation."}
-                            </span>
+                            <span>{BACKEND_FILTER_LABELS[activeBackendFilter]?.text}</span>
                           </div>
-                          <button 
+                          <button
                             className="btn btn-ghost btn-sm"
-                            style={{ 
-                              color: "var(--accent-warning)", 
-                              padding: "0.25rem 0.75rem", 
+                            style={{
+                              color: "var(--accent-warning)",
+                              padding: "0.25rem 0.75rem",
                               minHeight: "unset",
                               fontSize: "0.82rem",
                               fontWeight: 600
@@ -408,6 +512,7 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       )}
+
                       {filteredProviderCount === 0 ? (
                         <div className="no-results-state">
                           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--border-strong)" strokeWidth="1.5">
@@ -421,17 +526,33 @@ export default function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
-                            onClick={() => { setSearchQuery(""); setFilterStatus("all"); }}
+                            onClick={() => {
+                              setSearchQuery("");
+                              setFilterStatus("all");
+                              setActiveTagFilter(null);
+                            }}
                           >
                             Clear filters
                           </button>
                         </div>
                       ) : (
                         <div className="provider-cards-grid">
-                          {Object.keys(filteredGrouped).sort().map((provider) => {
+                          {Object.keys(filteredGrouped).sort((a, b) => {
+                            // Favorites-containing providers first if not in a special filter
+                            const aHasFav = filteredGrouped[a]?.some((acc) => acc.isFavorite);
+                            const bHasFav = filteredGrouped[b]?.some((acc) => acc.isFavorite);
+                            if (aHasFav && !bHasFav) return -1;
+                            if (!aHasFav && bHasFav) return 1;
+                            return a.localeCompare(b);
+                          }).map((provider) => {
                             const accountsForProv = filteredGrouped[provider] || [];
                             const totalForProv = grouped[provider]?.length ?? accountsForProv.length;
                             const count = accountsForProv.length;
+
+                            const hasFavorite = accountsForProv.some((a) => a.isFavorite);
+                            const hasExpired = accountsForProv.some((a) => a.isExpired);
+                            const hasExpiring = !hasExpired && accountsForProv.some((a) => a.isExpiringSoon);
+
                             let firstUrl = null;
                             for (const acc of accountsForProv) {
                               if (acc.attributes["Url"] || acc.attributes["URL"] || acc.attributes["url"]) {
@@ -440,6 +561,11 @@ export default function DashboardPage() {
                               }
                             }
 
+                            // Collect tags for this provider
+                            const providerTags = Array.from(
+                              new Set(accountsForProv.flatMap((a) => a.tags ?? []))
+                            );
+
                             return (
                               <div
                                 key={provider}
@@ -447,8 +573,18 @@ export default function DashboardPage() {
                                 onClick={() => handleProviderSelect(provider)}
                                 id={`provider-card-${provider.replace(/\s+/g, "-").toLowerCase()}`}
                               >
-                                <div className="provider-card-icon-wrapper">
+                                <div className="provider-card-icon-wrapper" style={{ position: "relative" }}>
                                   <ProviderIcon name={provider} url={firstUrl} size={42} />
+                                  {hasFavorite && (
+                                    <span style={{
+                                      position: "absolute", top: -4, right: -4,
+                                      color: "#fbbf24", lineHeight: 1,
+                                    }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1">
+                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                      </svg>
+                                    </span>
+                                  )}
                                 </div>
                                 <h3 className="provider-card-name">{provider}</h3>
                                 <p className="provider-card-count">
@@ -456,6 +592,39 @@ export default function DashboardPage() {
                                     ? `${count} of ${totalForProv} accounts`
                                     : `${count} ${count === 1 ? "account" : "accounts"}`}
                                 </p>
+                                {/* Expiry indicator */}
+                                {(hasExpired || hasExpiring) && (
+                                  <span style={{
+                                    marginTop: "0.25rem",
+                                    fontSize: "0.65rem", fontWeight: 700, padding: "1px 6px",
+                                    borderRadius: "999px",
+                                    background: hasExpired ? "rgba(244,63,94,0.12)" : "rgba(251,191,36,0.12)",
+                                    color: hasExpired ? "#f43f5e" : "#fbbf24",
+                                    border: `1px solid ${hasExpired ? "rgba(244,63,94,0.3)" : "rgba(251,191,36,0.3)"}`,
+                                    letterSpacing: "0.03em",
+                                  }}>
+                                    {hasExpired ? "Password Expired" : "Expiring Soon"}
+                                  </span>
+                                )}
+                                {/* Tag chips on card */}
+                                {providerTags.length > 0 && (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.375rem", justifyContent: "center" }}>
+                                    {providerTags.slice(0, 3).map((tag) => (
+                                      <span key={tag} style={{
+                                        fontSize: "0.62rem", fontWeight: 600, padding: "1px 6px",
+                                        borderRadius: "999px", background: "var(--bg-hover)",
+                                        color: "var(--text-muted)", border: "1px solid var(--border-subtle)",
+                                      }}>
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {providerTags.length > 3 && (
+                                      <span style={{ fontSize: "0.62rem", color: "var(--text-muted)" }}>
+                                        +{providerTags.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

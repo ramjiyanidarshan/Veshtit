@@ -13,7 +13,7 @@ export default function AppleIcon() {
         alignItems: "center",
         justifyContent: "center",
         // iOS clips to rounded square automatically — no borderRadius needed
-        background: "linear-gradient(145deg, #6366f1 0%, #4338ca 100%)",
+        background: "linear-gradient(145deg, #FF6B35 0%, #E8530C 100%)",
       }}
     >
       <div

@@ -17,7 +17,7 @@ interface Settings {
   generator?: { length: number; uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean };
 }
 
-type SectionKey = "security" | "sessions" | "encryption" | "jwt" | "database" | "appearance" | "data";
+type SectionKey = "security" | "sessions" | "encryption" | "jwt" | "database" | "appearance" | "data" | "auditlog";
 type Msg = { type: "success" | "error" | "warning"; text: string } | null;
 
 function Alert({ msg }: { msg: Msg }) {
@@ -44,34 +44,26 @@ function Spinner() {
 }
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{
-      background: "var(--bg-glass)",
-      backdropFilter: "blur(20px)",
-      WebkitBackdropFilter: "blur(20px)",
-      border: "1px solid var(--border-subtle)",
-      borderRadius: "var(--radius-xl)",
-      padding: "1.75rem",
-      boxShadow: "var(--shadow-md)",
-      transition: "border-color 0.2s, box-shadow 0.2s",
-      ...style,
-    }}>
-      {children}
-    </div>
-  );
+  return <div className="settings-card" style={style}>{children}</div>;
 }
 
 function CardHeader({ icon, title, subtitle, badge }: { icon: React.ReactNode; title: string; subtitle: string; badge?: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-      <div style={{ width: 40, height: 40, borderRadius: "var(--radius-md)", background: "var(--bg-hover)", border: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", flexShrink: 0 }}>
-        {icon}
-      </div>
+    <div className="settings-card-header">
+      <div className="settings-card-icon">{icon}</div>
       <div style={{ flex: 1 }}>
-        <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: "var(--text-primary)" }}>{title}</h3>
-        <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>{subtitle}</p>
+        <h3 className="settings-card-title">{title}</h3>
+        <p className="settings-card-subtitle">{subtitle}</p>
       </div>
       {badge}
+    </div>
+  );
+}
+
+function Toggle({ checked }: { checked: boolean; onChange?: (v: boolean) => void }) {
+  return (
+    <div className={`custom-toggle${checked ? " toggle-on" : ""}`} aria-checked={checked} role="checkbox">
+      <div className="toggle-thumb" />
     </div>
   );
 }
@@ -135,6 +127,11 @@ export default function SettingsPage() {
   const [unameForm, setUnameForm] = useState({ newUsername: "" });
   const [unameLoading, setUnameLoading] = useState(false);
   const [unameMsg, setUnameMsg] = useState<Msg>(null);
+
+  const [auditLogs, setAuditLogs] = useState<{ _id: string; action: string; entity: string; details: string; metadata?: Record<string, unknown>; createdAt: string }[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditEntityFilter, setAuditEntityFilter] = useState<string>("all");
 
   const load = useCallback(async () => {
     try {
@@ -355,8 +352,23 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (activeSection === "sessions") loadSessions();
+    if (activeSection === "auditlog") loadAuditLogs(auditEntityFilter === "all" ? undefined : auditEntityFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection]);
+
+  async function loadAuditLogs(entity?: string) {
+    setAuditLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      if (entity) params.set("entity", entity);
+      const res = await fetch(`${BACKEND}/api/audit-logs?${params.toString()}`, { credentials: "include" });
+      const data = await res.json();
+      setAuditLogs(data.logs ?? []);
+      setAuditTotal(data.total ?? 0);
+    } catch { /* ignore */ }
+    finally { setAuditLoading(false); }
+  }
 
   function generateUsername() {
     const adjectives = ["swift", "bold", "calm", "dark", "epic", "fast", "gold", "iron", "jade", "keen", "lush", "mint", "nova", "pale", "rare", "sage", "tall", "vast", "warm", "zeal"];
@@ -368,13 +380,20 @@ export default function SettingsPage() {
   }
 
   const navItems: { key: SectionKey; label: string; icon: React.ReactNode }[] = [
-    { key: "security", label: "Security", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> },
-    { key: "sessions", label: "Sessions", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg> },
-    { key: "encryption", label: "Encryption", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg> },
-    { key: "jwt", label: "JWT", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg> },
-    { key: "database", label: "Database", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg> },
-    { key: "appearance", label: "Appearance", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg> },
-    { key: "data", label: "Data", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg> },
+    { key: "security", label: "Security", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> },
+    { key: "sessions", label: "Sessions", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg> },
+    { key: "encryption", label: "Encryption", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg> },
+    { key: "jwt", label: "JWT Secret", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg> },
+    { key: "database", label: "Database", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg> },
+    { key: "appearance", label: "Appearance", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg> },
+    { key: "data", label: "Data", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg> },
+    { key: "auditlog", label: "Audit Log", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
+  ];
+
+  const navGroups: { label: string; keys: SectionKey[] }[] = [
+    { label: "Account", keys: ["security"] },
+    { label: "System", keys: ["sessions", "encryption", "jwt", "database"] },
+    { label: "Preferences", keys: ["appearance", "data", "auditlog"] },
   ];
 
   const StatusBadge = ({ active }: { active: boolean }) => (
@@ -387,7 +406,7 @@ export default function SettingsPage() {
   const SectionTitle = ({ icon, children, desc }: { icon: React.ReactNode; children: React.ReactNode; desc?: string }) => (
     <div style={{ marginBottom: "1.5rem" }}>
       <div className="settings-section-title">{icon} {children}</div>
-      {desc && <p style={{ fontSize: "0.825rem", color: "var(--text-muted)", marginTop: "0.375rem", lineHeight: 1.5 }}>{desc}</p>}
+      {desc && <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.5rem", lineHeight: 1.6, paddingLeft: "0.125rem" }}>{desc}</p>}
     </div>
   );
 
@@ -411,15 +430,29 @@ export default function SettingsPage() {
         <div className="settings-layout">
           {/* ── Side Nav ── */}
           <nav className="settings-nav">
-            {navItems.map((item) => (
-              <button
-                key={item.key}
-                className={`settings-nav-item${activeSection === item.key ? " active" : ""}`}
-                onClick={() => setActiveSection(item.key)}
-              >
-                <span className="settings-nav-icon">{item.icon}</span>
-                {item.label}
-              </button>
+            <div className="settings-nav-header">
+              <span className="settings-nav-brand-dot" />
+              Configuration
+            </div>
+            {navGroups.map((group) => (
+              <div key={group.label} className="settings-nav-group">
+                <div className="settings-nav-group-label">{group.label}</div>
+                <div className="settings-nav-group-items">
+                  {group.keys.map((key) => {
+                    const item = navItems.find((n) => n.key === key)!;
+                    return (
+                      <button
+                        key={key}
+                        className={`settings-nav-item${activeSection === key ? " active" : ""}`}
+                        onClick={() => setActiveSection(key)}
+                      >
+                        <span className="settings-nav-icon">{item.icon}</span>
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </nav>
 
@@ -698,18 +731,23 @@ export default function SettingsPage() {
                               </div>
                               <div className="generator-checkbox-grid">
                                 {[
-                                  { id: "gen-upper", checked: genUppercase, setter: setGenUppercase, title: "Uppercase (A-Z)", desc: "ABCDEFGHIJKLMNOPQRSTUVWXYZ" },
-                                  { id: "gen-lower", checked: genLowercase, setter: setGenLowercase, title: "Lowercase (a-z)", desc: "abcdefghijklmnopqrstuvwxyz" },
+                                  { id: "gen-upper", checked: genUppercase, setter: setGenUppercase, title: "Uppercase (A-Z)", desc: "ABCDE…WXYZ" },
+                                  { id: "gen-lower", checked: genLowercase, setter: setGenLowercase, title: "Lowercase (a-z)", desc: "abcde…wxyz" },
                                   { id: "gen-num", checked: genNumbers, setter: setGenNumbers, title: "Numbers (0-9)", desc: "0123456789" },
-                                  { id: "gen-sym", checked: genSymbols, setter: setGenSymbols, title: "Symbols (!@#...)", desc: "!@#$%^&*()_+-=" },
+                                  { id: "gen-sym", checked: genSymbols, setter: setGenSymbols, title: "Symbols (!@#…)", desc: "!@#$%^&*()_+-=" },
                                 ].map((item) => (
-                                  <label key={item.id} className={`generator-checkbox-card${item.checked ? " active" : ""}`}>
-                                    <input type="checkbox" checked={item.checked} onChange={(e) => item.setter(e.target.checked)} />
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`generator-checkbox-card${item.checked ? " active" : ""}`}
+                                    onClick={() => item.setter(!item.checked)}
+                                  >
+                                    <Toggle checked={item.checked} />
                                     <div className="checkbox-card-content">
                                       <span className="checkbox-card-title">{item.title}</span>
                                       <span className="checkbox-card-desc">{item.desc}</span>
                                     </div>
-                                  </label>
+                                  </button>
                                 ))}
                               </div>
                               <button type="submit" className="btn btn-primary" disabled={genLoading} id="save-generator-btn">
@@ -770,7 +808,7 @@ export default function SettingsPage() {
                             : null;
 
                           return (
-                            <div key={session.sessionId} style={{ background: "var(--bg-glass)", backdropFilter: "blur(20px)", border: `1px solid ${isCurrent ? "rgba(99,102,241,0.4)" : "var(--border-subtle)"}`, borderRadius: "var(--radius-xl)", overflow: "hidden", boxShadow: isCurrent ? "0 0 0 1px rgba(99,102,241,0.2)" : "none" }}>
+                            <div key={session.sessionId} style={{ background: "var(--bg-glass)", backdropFilter: "blur(20px)", border: `1px solid ${isCurrent ? "rgba(255,107,53,0.45)" : "var(--border-subtle)"}`, borderRadius: "var(--radius-xl)", overflow: "hidden", boxShadow: isCurrent ? "0 0 0 1px rgba(255,107,53,0.15)" : "none" }}>
                               {/* Session header */}
                               <div style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{deviceIcon}</div>
@@ -778,7 +816,7 @@ export default function SettingsPage() {
                                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.25rem" }}>
                                     <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)" }}>{session.os} · {session.browser}</span>
                                     {isCurrent && (
-                                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "999px", background: "rgba(99,102,241,0.15)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.35)" }}>
+                                      <span style={{ fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "999px", background: "rgba(255,107,53,0.15)", color: "#FF9A6C", border: "1px solid rgba(255,107,53,0.35)" }}>
                                         Current
                                       </span>
                                     )}
@@ -868,7 +906,7 @@ export default function SettingsPage() {
                     <div className="settings-cards-grid">
                       {/* AES Status */}
                       <Card>
-                        <div style={{ display: "flex", alignItems: "center", gap: "1rem", background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: "var(--radius-xl)", padding: "1.25rem", marginBottom: "1.5rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "1rem", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.15)", borderRadius: "var(--radius-xl)", padding: "1.25rem", marginBottom: "1.5rem" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
                           <div style={{ flex: 1 }}>
                             <p style={{ fontWeight: 700, fontSize: "1rem", color: "var(--text-primary)", margin: 0 }}>AES-256-GCM Active</p>
@@ -1090,6 +1128,105 @@ export default function SettingsPage() {
                           );
                         })}
                       </div>
+                    </Card>
+                  </div>
+                )}
+
+                {/* ══════════════════ AUDIT LOG ══════════════════ */}
+                {activeSection === "auditlog" && (
+                  <div className="settings-section settings-section-animate">
+                    <SectionTitle icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>} desc="Immutable record of create, update, and delete operations across your vault">
+                      Audit Log
+                    </SectionTitle>
+                    <Card>
+                      {/* Filters */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+                        {(["all", "account", "settings", "auth", "import", "export"] as const).map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            className={`filter-chip${auditEntityFilter === f ? " active" : ""}`}
+                            style={{ fontSize: "0.75rem", padding: "2px 10px" }}
+                            onClick={() => {
+                              setAuditEntityFilter(f);
+                              loadAuditLogs(f === "all" ? undefined : f);
+                            }}
+                          >
+                            {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                          </button>
+                        ))}
+                        <span style={{ marginLeft: "auto", fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                          {auditTotal} total events
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => loadAuditLogs(auditEntityFilter === "all" ? undefined : auditEntityFilter)}
+                          title="Refresh"
+                          style={{ padding: "4px 8px", minHeight: "unset" }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                          </svg>
+                        </button>
+                      </div>
+
+                      {auditLoading ? (
+                        <div style={{ display: "flex", justifyContent: "center", padding: "2rem" }}><Spinner /></div>
+                      ) : auditLogs.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: "2.5rem 1rem", color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: "0.75rem", opacity: 0.4 }}>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                          </svg>
+                          <p>No audit log entries yet.</p>
+                          <p style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>Actions like creating, editing, or deleting accounts will appear here.</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0", overflow: "hidden", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+                          {auditLogs.map((log, i) => {
+                            const actionColor = log.action.includes("deleted") ? "#f43f5e"
+                              : log.action.includes("created") ? "#4ade80"
+                              : log.action.includes("favorited") ? "#fbbf24"
+                              : "var(--text-secondary)";
+                            return (
+                              <div
+                                key={log._id}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "auto 1fr auto",
+                                  alignItems: "center",
+                                  gap: "0.75rem",
+                                  padding: "0.625rem 1rem",
+                                  background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)",
+                                  borderBottom: i < auditLogs.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                                  fontSize: "0.82rem",
+                                }}
+                              >
+                                <span style={{
+                                  display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                                  background: actionColor, flexShrink: 0, opacity: 0.8,
+                                }} />
+                                <div>
+                                  <span style={{ fontWeight: 600, color: actionColor, marginRight: "0.5rem" }}>
+                                    {log.action}
+                                  </span>
+                                  <span style={{ color: "var(--text-secondary)" }}>{log.details}</span>
+                                </div>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", whiteSpace: "nowrap" }} suppressHydrationWarning>
+                                  {new Date(log.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {auditLogs.length > 0 && auditTotal > auditLogs.length && (
+                        <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", textAlign: "center", marginTop: "0.75rem" }}>
+                          Showing latest {auditLogs.length} of {auditTotal} events.
+                        </p>
+                      )}
                     </Card>
                   </div>
                 )}

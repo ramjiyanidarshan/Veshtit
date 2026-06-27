@@ -17,7 +17,8 @@ interface AccountFormProps {
   initialProvider?: string;
   onSubmit: (
     serviceProvider: string,
-    attributes: Record<string, string | null>
+    attributes: Record<string, string | null>,
+    tags?: string[]
   ) => Promise<void>;
 }
 
@@ -163,6 +164,8 @@ export default function AccountForm({
   );
   const [rows, setRows] = useState<AttributeRow[]>([]);
   const [status, setStatus] = useState<StatusValue>("Active");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState("");
   const [genRules, setGenRules] = useState({
     length: 16,
@@ -233,6 +236,7 @@ export default function AccountForm({
           ([k]) => k.toLowerCase() === "status"
         )?.[1] ?? "Active";
       setStatus((statusVal as StatusValue) ?? "Active");
+      setTags(Array.isArray(initialData.tags) ? initialData.tags : []);
 
       const loadedRows = Object.entries(initialData.attributes)
         .filter(([k]) => k.toLowerCase() !== "status")
@@ -291,7 +295,7 @@ export default function AccountForm({
     }
     attributes["Status"] = status;
 
-    await onSubmit(serviceProvider.trim(), attributes);
+    await onSubmit(serviceProvider.trim(), attributes, tags);
   }
 
   return (
@@ -370,6 +374,85 @@ export default function AccountForm({
             No attributes yet. Click &quot;+ Add Field&quot; to start.
           </div>
         )}
+
+        {/* ── Tags field ── */}
+        <div className="attr-field-card" style={{ marginTop: "0.5rem" }}>
+          <div className="attr-field-key-row">
+            <span className="attr-field-key-input" style={{ cursor: "default", display: "flex", alignItems: "center", gap: "0.375rem" }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+              Tags
+            </span>
+            <span className="attr-default-badge">optional</span>
+          </div>
+          <div className="attr-field-divider" />
+          <div style={{ padding: "0.5rem 0.625rem 0.625rem" }}>
+            {tags.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem", marginBottom: "0.5rem" }}>
+                {tags.map((tag) => (
+                  <span key={tag} style={{
+                    display: "inline-flex", alignItems: "center", gap: "0.25rem",
+                    fontSize: "0.75rem", fontWeight: 600, padding: "2px 8px",
+                    borderRadius: "999px", background: "var(--bg-hover)",
+                    color: "var(--text-secondary)", border: "1px solid var(--border-subtle)",
+                  }}>
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "inherit", opacity: 0.6, lineHeight: 1 }}
+                      title={`Remove ${tag}`}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: "0.375rem" }}>
+              <input
+                type="text"
+                className="form-input"
+                style={{ fontSize: "0.82rem", padding: "0.375rem 0.5rem" }}
+                placeholder="e.g. Work, Personal, Finance..."
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                    e.preventDefault();
+                    const newTag = tagInput.trim().replace(/,/g, "");
+                    if (newTag && !tags.includes(newTag)) {
+                      setTags((prev) => [...prev, newTag]);
+                    }
+                    setTagInput("");
+                  }
+                }}
+                id="tag-input"
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  const newTag = tagInput.trim();
+                  if (newTag && !tags.includes(newTag)) {
+                    setTags((prev) => [...prev, newTag]);
+                  }
+                  setTagInput("");
+                }}
+                disabled={!tagInput.trim()}
+              >
+                Add
+              </button>
+            </div>
+            <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.375rem" }}>
+              Press Enter or comma to add a tag
+            </p>
+          </div>
+        </div>
 
         {/* ── Fixed Status field ── */}
         <div className="attr-field-card status-field-card" style={{ marginTop: "0.5rem" }}>

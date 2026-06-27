@@ -12,6 +12,7 @@ interface AccountDetailProps {
   onDelete: (account: Account) => void;
   onAddNew: () => void;
   onBack: () => void;
+  onToggleFavorite?: (account: Account) => void;
 }
 
 const PASSWORD_KEYS = ["password", "passwd", "pass", "secret", "pin", "key"];
@@ -234,6 +235,7 @@ export default function AccountDetail({
   onDelete,
   onAddNew,
   onBack,
+  onToggleFavorite,
 }: AccountDetailProps) {
   if (accounts.length === 0) {
     return (
@@ -314,8 +316,30 @@ export default function AccountDetail({
                 </div>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                {/* Status badge — top-right of card */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                {/* Expiry badge */}
+                {account.isExpired && (
+                  <span style={{
+                    fontSize: "0.68rem", fontWeight: 700, padding: "2px 7px",
+                    borderRadius: "999px", background: "rgba(244,63,94,0.12)",
+                    color: "#f43f5e", border: "1px solid rgba(244,63,94,0.3)",
+                    letterSpacing: "0.03em",
+                  }}>
+                    Expired
+                  </span>
+                )}
+                {!account.isExpired && account.isExpiringSoon && (
+                  <span style={{
+                    fontSize: "0.68rem", fontWeight: 700, padding: "2px 7px",
+                    borderRadius: "999px", background: "rgba(251,191,36,0.12)",
+                    color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)",
+                    letterSpacing: "0.03em",
+                  }}>
+                    Expiring in {account.daysUntilExpiry}d
+                  </span>
+                )}
+
+                {/* Status badge */}
                 {(() => {
                   const statusEntry = Object.entries(account.attributes).find(
                     ([k]) => k.toLowerCase() === "status"
@@ -333,7 +357,21 @@ export default function AccountDetail({
                   );
                 })()}
 
-                <div style={{ display: "flex", gap: "0.375rem" }}>
+                <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
+                {/* Favorite star */}
+                {onToggleFavorite && (
+                  <button
+                    id={`favorite-account-${account._id}`}
+                    className="btn btn-ghost btn-sm btn-icon"
+                    onClick={() => onToggleFavorite(account)}
+                    title={account.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    style={{ padding: "4px 6px", minHeight: "unset", color: account.isFavorite ? "#fbbf24" : "var(--text-muted)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill={account.isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   id={`edit-account-${account._id}`}
                   className="btn btn-secondary btn-sm"
@@ -386,6 +424,25 @@ export default function AccountDetail({
                     </div>
                   );
                 })}
+
+              {/* Tags */}
+              {Array.isArray(account.tags) && account.tags.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", flexWrap: "wrap", marginTop: "0.75rem", paddingTop: "0.625rem", borderTop: "1px solid var(--border-subtle)" }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                    <line x1="7" y1="7" x2="7.01" y2="7" />
+                  </svg>
+                  {account.tags.map((tag) => (
+                    <span key={tag} style={{
+                      fontSize: "0.7rem", fontWeight: 600, padding: "2px 8px",
+                      borderRadius: "999px", background: "var(--bg-hover)",
+                      color: "var(--text-secondary)", border: "1px solid var(--border-subtle)",
+                    }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

@@ -5,6 +5,12 @@ export interface Account {
   serviceProvider: string;
   attributes: Record<string, string | null>;
   passwordHistory?: { password: string; changedAt: string }[];
+  passwordLastChangedAt?: string;
+  isFavorite?: boolean;
+  tags?: string[];
+  isExpired?: boolean;
+  isExpiringSoon?: boolean;
+  daysUntilExpiry?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,12 +73,31 @@ export interface ImportResolveResponse {
   };
 }
 
+// ─── Audit Log Types ──────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  _id: string;
+  action: string;
+  entity: "account" | "settings" | "auth" | "import" | "export";
+  entityId?: string;
+  details: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AuditLogsResponse {
+  logs: AuditLogEntry[];
+  total: number;
+}
+
+// ─── Tags Types ────────────────────────────────────────────────────────────────
+
+export interface TagsResponse {
+  tags: string[];
+}
+
 // ─── Veshtit JSON Format ───────────────────────────────────────────────────────
 
-/**
- * The raw JSON format used for import/export.
- * Keys are service provider names, values are arrays of attribute objects.
- */
 export type VeshtitJson = {
   [serviceProvider: string]: Record<string, string | null>[];
 };
