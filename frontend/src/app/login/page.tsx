@@ -64,7 +64,9 @@ export default function LoginPage() {
 
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-icon">🔐</div>
+          <div className="login-logo-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-primary)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
           <div>
             <div className="login-title">Veshtit</div>
             <div className="login-subtitle">Digital Account Manager</div>
@@ -168,7 +170,10 @@ export default function LoginPage() {
             lineHeight: 1.6,
           }}
         >
-          🔒 All account data is AES-256-GCM encrypted at rest.
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", justifyContent: "center" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            All account data is AES-256-GCM encrypted at rest.
+          </span>
         </div>
       </div>
     </div>

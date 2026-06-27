@@ -128,6 +128,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [auditLoading, setAuditLoading] = useState(true);
   const [showAllIssues, setShowAllIssues] = useState(false);
+  const [activeTab, setActiveTab] = useState<"score" | "status">("score");
 
   const load = useCallback(async () => {
     try { 
@@ -194,11 +195,11 @@ export default function DashboardPage() {
   const totalRisk = audit ? audit.issues.filter((a) => a.score < 40 || a.needsRotation || a.isDuplicate).length : 0;
 
   // Global security suggestions - updated to link straight to the accounts list filters
-  const suggestions: { icon: string; text: string; action: string; actionText: string }[] = [];
+  const suggestions: { icon: React.ReactNode; text: string; action: string; actionText: string }[] = [];
   if (audit) {
     if (audit.summary.veryWeak + audit.summary.weak > 0) {
       suggestions.push({ 
-        icon: "🔑", 
+        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5l-.5-.5"/></svg>, 
         text: `${audit.summary.veryWeak + audit.summary.weak} accounts have weak passwords. Update them to improve security.`,
         action: "/accounts?filter=weak",
         actionText: "Fix Passwords"
@@ -206,7 +207,7 @@ export default function DashboardPage() {
     }
     if (audit.summary.needsRotation > 0) {
       suggestions.push({ 
-        icon: "🕐", 
+        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, 
         text: `${audit.summary.needsRotation} passwords haven't been rotated in ${audit.rotationDays}+ days.`,
         action: "/accounts?filter=old",
         actionText: "Rotate Credentials"
@@ -214,7 +215,7 @@ export default function DashboardPage() {
     }
     if (audit.summary.duplicates > 0) {
       suggestions.push({ 
-        icon: "🔁", 
+        icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>, 
         text: `${audit.summary.duplicates} accounts share identical passwords. Use unique values for each.`,
         action: "/accounts?filter=duplicate",
         actionText: "Resolve Duplicates"
@@ -264,56 +265,115 @@ export default function DashboardPage() {
 
               {/* Main Security Hub */}
               <div className="dash-grid-layout dash-grid-layout-two-col">
-                {/* Left: Radial Score Card */}
+                {/* Left: Combined Security Score & Status Distribution */}
                 <div className="premium-card card-accent-primary" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <div className="dash-card-header" style={{ marginBottom: "1.5rem" }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    Security Score
+                  <div className="dash-card-header" style={{ marginBottom: "1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      Security &amp; Status
+                    </span>
                   </div>
 
-                  {auditLoading ? (
-                    <div className="empty-state" style={{ flex: 1, minHeight: "220px" }}>
-                      <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    </div>
-                  ) : audit ? (
-                    <div className="premium-score-wrapper" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <ScoreRing score={audit.overallScore} label={audit.scoreLabel} />
-                        <div className="premium-score-text" style={{ color: scoreLabelColor(audit.scoreLabel) }}>
-                          {audit.scoreLabel} Health status
-                        </div>
-                        <p className="premium-score-desc">
-                          Calculated from password complexity and age analysis of your {audit.summary.total} accounts.
-                        </p>
-                      </div>
+                  {/* Tab Switcher */}
+                  <div style={{ display: "flex", gap: "0.35rem", marginBottom: "1.25rem", background: "rgba(255,255,255,0.03)", padding: "3px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+                    <button
+                      className={`btn btn-sm ${activeTab === "score" ? "btn-primary" : "btn-ghost"}`}
+                      style={{ flex: 1, padding: "0.35rem 0.5rem", fontSize: "0.78rem", borderRadius: "var(--radius-sm)", height: "30px", border: activeTab === "score" ? undefined : "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+                      onClick={() => setActiveTab("score")}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      Score
+                    </button>
+                    <button
+                      className={`btn btn-sm ${activeTab === "status" ? "btn-primary" : "btn-ghost"}`}
+                      style={{ flex: 1, padding: "0.35rem 0.5rem", fontSize: "0.78rem", borderRadius: "var(--radius-sm)", height: "30px", border: activeTab === "status" ? undefined : "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+                      onClick={() => setActiveTab("status")}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                      Status
+                    </button>
+                  </div>
 
-                      {/* Score category details */}
-                      <div className="sec-breakdown" style={{ width: "100%", marginTop: "1.5rem" }}>
-                        {([
-                          ["Very Strong", audit.summary.veryStrong],
-                          ["Strong",      audit.summary.strong],
-                          ["Moderate",    audit.summary.moderate],
-                          ["Weak",        audit.summary.weak],
-                          ["Very Weak",   audit.summary.veryWeak],
-                        ] as [string, number][]).map(([lbl, cnt]) => (
-                          <div key={lbl} className="sec-breakdown-row" style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.8rem" }}>
-                            <span className="sec-breakdown-label" style={{ width: "80px", color: "var(--text-secondary)" }}>{lbl}</span>
-                            <div className="sec-breakdown-track" style={{ flex: 1, height: "6px", background: "var(--border-subtle)", borderRadius: "3px", overflow: "hidden" }}>
-                              <div className="sec-breakdown-fill" style={{
-                                height: "100%",
-                                width: audit.summary.total > 0 ? `${(cnt / audit.summary.total) * 100}%` : "0%",
-                                background: strengthColor(lbl),
-                                borderRadius: "3px"
-                              }} />
-                            </div>
-                            <span className="sec-breakdown-count" style={{ width: "20px", textAlign: "right", fontWeight: 700, color: strengthColor(lbl) }}>{cnt}</span>
-                          </div>
-                        ))}
+                  {activeTab === "score" ? (
+                    auditLoading ? (
+                      <div className="empty-state" style={{ flex: 1, minHeight: "220px" }}>
+                        <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                       </div>
-                    </div>
+                    ) : audit ? (
+                      <div className="premium-score-wrapper" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: "1.5rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <ScoreRing score={audit.overallScore} label={audit.scoreLabel} />
+                          <div className="premium-score-text" style={{ color: scoreLabelColor(audit.scoreLabel) }}>
+                            {audit.scoreLabel} Health status
+                          </div>
+                          <p className="premium-score-desc">
+                            Calculated from password complexity and age analysis of your {audit.summary.total} accounts.
+                          </p>
+                        </div>
+
+                        {/* Score category details */}
+                        <div className="sec-breakdown" style={{ width: "100%", marginTop: "1.5rem" }}>
+                          {([
+                            ["Very Strong", audit.summary.veryStrong],
+                            ["Strong",      audit.summary.strong],
+                            ["Moderate",    audit.summary.moderate],
+                            ["Weak",        audit.summary.weak],
+                            ["Very Weak",   audit.summary.veryWeak],
+                          ] as [string, number][]).map(([lbl, cnt]) => (
+                            <div key={lbl} className="sec-breakdown-row" style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.8rem" }}>
+                              <span className="sec-breakdown-label" style={{ width: "80px", color: "var(--text-secondary)" }}>{lbl}</span>
+                              <div className="sec-breakdown-track" style={{ flex: 1, height: "6px", background: "var(--border-subtle)", borderRadius: "3px", overflow: "hidden" }}>
+                                <div className="sec-breakdown-fill" style={{
+                                  height: "100%",
+                                  width: audit.summary.total > 0 ? `${(cnt / audit.summary.total) * 100}%` : "0%",
+                                  background: strengthColor(lbl),
+                                  borderRadius: "3px"
+                                }} />
+                              </div>
+                              <span className="sec-breakdown-count" style={{ width: "20px", textAlign: "right", fontWeight: 700, color: strengthColor(lbl) }}>{cnt}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="empty-state" style={{ flex: 1, minHeight: "220px" }}>
+                        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Failed to retrieve security audit data</p>
+                      </div>
+                    )
                   ) : (
-                    <div className="empty-state" style={{ flex: 1, minHeight: "220px" }}>
-                      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Failed to retrieve security audit data</p>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", flexDirection: "column", gap: "1.5rem", padding: "0.5rem 0" }}>
+                        <div style={{ position: "relative", width: "128px", height: "128px" }}>
+                          <DonutChart active={sb.Active} disable={sb.Disable} deleted={sb.Deleted} other={sb.Other} total={total} />
+                          <div className="premium-donut-center">
+                            <span className="premium-donut-num">{total}</span>
+                            <span className="premium-donut-label">Total</span>
+                          </div>
+                        </div>
+
+                        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                          {[
+                            { label: "Active",  value: sb.Active,  color: "#10b981", param: "?filter=Active" },
+                            { label: "Disable", value: sb.Disable, color: "#fbbf24", param: "?filter=Disable" },
+                            { label: "Deleted", value: sb.Deleted, color: "#ef4444", param: "?filter=Deleted" },
+                            { label: "Other",   value: sb.Other,   color: "#6366f1", param: "" },
+                          ].map((item) => (
+                            <div 
+                              key={item.label} 
+                              className="premium-rec-item" 
+                              style={{ padding: "0.5rem 0.75rem", border: "1px solid var(--border-subtle)", display: "flex", alignItems: "center" }}
+                              onClick={() => router.push(`/accounts${item.param}`)}
+                            >
+                              <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: item.color, marginRight: "0.5rem", flexShrink: 0 }} />
+                              <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", flex: 1 }}>{item.label}</span>
+                              <span style={{ fontWeight: 700, fontSize: "0.85rem", marginRight: "0.5rem" }}>{item.value}</span>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                ({total > 0 ? Math.round((item.value / total) * 100) : 0}%)
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -380,7 +440,7 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     <div className="empty-state" style={{ minHeight: "200px" }}>
-                      <span style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🛡️</span>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.5" style={{ marginBottom: "0.5rem" }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       <p style={{ color: "#10b981", fontWeight: 600, fontSize: "0.9rem", margin: 0 }}>All accounts look healthy!</p>
                       <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", margin: "4px 0 0" }}>No weak, duplicate, or expired passwords detected.</p>
                     </div>
@@ -411,49 +471,8 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Mid Row: Status breakdown & Top Providers */}
+              {/* Mid Row: Top Providers & Recent Activities */}
               <div className="dash-grid-layout dash-grid-layout-half">
-                {/* Status Breakdown (Donut Chart) */}
-                <div className="premium-card">
-                  <div className="dash-card-header" style={{ marginBottom: "1.5rem" }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Status Distribution
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "2.5rem", justifyContent: "center", padding: "0.5rem 0" }}>
-                    <div style={{ position: "relative", width: "128px", height: "128px" }}>
-                      <DonutChart active={sb.Active} disable={sb.Disable} deleted={sb.Deleted} other={sb.Other} total={total} />
-                      <div className="premium-donut-center">
-                        <span className="premium-donut-num">{total}</span>
-                        <span className="premium-donut-label">Total</span>
-                      </div>
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: "160px", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                      {[
-                        { label: "Active",  value: sb.Active,  color: "#10b981", param: "?filter=Active" },
-                        { label: "Disable", value: sb.Disable, color: "#fbbf24", param: "?filter=Disable" },
-                        { label: "Deleted", value: sb.Deleted, color: "#ef4444", param: "?filter=Deleted" },
-                        { label: "Other",   value: sb.Other,   color: "#6366f1", param: "" },
-                      ].map((item) => (
-                        <div 
-                          key={item.label} 
-                          className="premium-rec-item" 
-                          style={{ padding: "0.5rem 0.75rem", border: "1px solid var(--border-subtle)" }}
-                          onClick={() => router.push(`/accounts${item.param}`)}
-                        >
-                          <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: item.color, marginRight: "0.5rem" }} />
-                          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", flex: 1 }}>{item.label}</span>
-                          <span style={{ fontWeight: 700, fontSize: "0.85rem", marginRight: "0.5rem" }}>{item.value}</span>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                            ({total > 0 ? Math.round((item.value / total) * 100) : 0}%)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 {/* Top Providers list */}
                 <div className="premium-card">
                   <div className="dash-card-header" style={{ marginBottom: "1.5rem" }}>
@@ -492,51 +511,51 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Recently added Credentials Activity Log */}
-              <div className="premium-card">
-                <div className="dash-card-header" style={{ marginBottom: "1.25rem" }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  Recent Activities & Credential Logs
+                {/* Recently added Credentials Activity Log */}
+                <div className="premium-card">
+                  <div className="dash-card-header" style={{ marginBottom: "1.25rem" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Recent Activities &amp; Credential Logs
+                  </div>
+
+                  {(stats?.recentAccounts ?? []).length === 0 ? (
+                    <div className="empty-state" style={{ padding: "3rem" }}>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: "0.5rem" }}><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Your vault is empty. Added credentials will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="activity-feed">
+                      {stats!.recentAccounts.map((a) => {
+                        const opt = getStatusOption(a.status);
+                        const isImport = a.source === "import";
+                        return (
+                          <div 
+                            key={a._id} 
+                            className="activity-row"
+                            onClick={() => router.push(`/accounts?provider=${encodeURIComponent(a.serviceProvider)}`)}
+                          >
+                            <div className="activity-provider-info">
+                              <ProviderIcon name={a.serviceProvider} size={30} />
+                              <span className="activity-name">{a.serviceProvider}</span>
+                            </div>
+
+                            <div className="activity-meta">
+                              <span className={`premium-tag ${isImport ? "premium-tag-info" : "premium-tag-success"}`} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                {isImport ? "Imported" : "Manual"}
+                              </span>
+                              <span className="status-badge-inline" style={{ color: opt.color, background: opt.bg, border: `1px solid ${opt.border}`, padding: "0.2rem 0.6rem", borderRadius: "99px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                <span className="status-dot" style={{ background: opt.color, width: "6px", height: "6px", borderRadius: "50%" }} />
+                                {a.status}
+                              </span>
+                              <span className="activity-time" suppressHydrationWarning>{formatDate(a.createdAt)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-
-                {(stats?.recentAccounts ?? []).length === 0 ? (
-                  <div className="empty-state" style={{ padding: "3rem" }}>
-                    <span style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📭</span>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Your vault is empty. Added credentials will appear here.</p>
-                  </div>
-                ) : (
-                  <div className="activity-feed">
-                    {stats!.recentAccounts.map((a) => {
-                      const opt = getStatusOption(a.status);
-                      const isImport = a.source === "import";
-                      return (
-                        <div 
-                          key={a._id} 
-                          className="activity-row"
-                          onClick={() => router.push(`/accounts?provider=${encodeURIComponent(a.serviceProvider)}`)}
-                        >
-                          <div className="activity-provider-info">
-                            <ProviderIcon name={a.serviceProvider} size={30} />
-                            <span className="activity-name">{a.serviceProvider}</span>
-                          </div>
-
-                          <div className="activity-meta">
-                            <span className={`premium-tag ${isImport ? "premium-tag-info" : "premium-tag-success"}`} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              {isImport ? "Imported" : "Manual"}
-                            </span>
-                            <span className="status-badge-inline" style={{ color: opt.color, background: opt.bg, border: `1px solid ${opt.border}`, padding: "0.2rem 0.6rem", borderRadius: "99px", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span className="status-dot" style={{ background: opt.color, width: "6px", height: "6px", borderRadius: "50%" }} />
-                              {a.status}
-                            </span>
-                            <span className="activity-time" suppressHydrationWarning>{formatDate(a.createdAt)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </>
           )}

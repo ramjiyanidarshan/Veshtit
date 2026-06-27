@@ -379,7 +379,13 @@ export default function DashboardPage() {
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                             <span style={{ fontSize: "1.1rem" }}>
-                              {activeBackendFilter === "weak" ? "🔑" : activeBackendFilter === "duplicate" ? "🔁" : "🕐"}
+                              {activeBackendFilter === "weak" ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5l-.5-.5"/></svg>
+                              ) : activeBackendFilter === "duplicate" ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                              ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                              )}
                             </span>
                             <span>
                               {activeBackendFilter === "weak" && "Showing only accounts with weak passwords needing update."}
@@ -467,7 +473,9 @@ export default function DashboardPage() {
                     }}
                   >
                     <div className="empty-state">
-                      <div className="empty-state-icon">🗂️</div>
+                      <div className="empty-state-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                      </div>
                       <p className="empty-state-title">Welcome to Veshtit</p>
                       <p className="empty-state-desc">
                         Create your first account to get started.

@@ -156,6 +156,16 @@ export async function POST(request: NextRequest) {
       source: "manual",
     });
 
+    const sessionId = request.headers.get("x-session-id");
+    if (sessionId) {
+      const { appendAuditEntry } = await import("@/lib/session");
+      await appendAuditEntry(
+        sessionId,
+        "account.created",
+        `Created account for ${serviceProvider}`
+      );
+    }
+
     return NextResponse.json(
       {
         account: {

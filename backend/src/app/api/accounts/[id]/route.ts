@@ -111,6 +111,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
+    const sessionId = request.headers.get("x-session-id");
+    if (sessionId) {
+      const { appendAuditEntry } = await import("@/lib/session");
+      await appendAuditEntry(
+        sessionId,
+        "account.updated",
+        `Updated account for ${updated.serviceProvider}`
+      );
+    }
+
     // Decrypt password history if present
     let decryptedHistory: any = undefined;
     if (updated.passwordHistory) {
@@ -143,13 +153,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/accounts/[id]
  * Deletes an account by ID.
  */
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const account = await AccountModel.findById(id);
+    if (!account) {
+      return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    }
     const deleted = await AccountModel.deleteOne(id);
 
     if (!deleted) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    }
+
+    const sessionId = request.headers.get("x-session-id");
+    if (sessionId) {
+      const { appendAuditEntry } = await import("@/lib/session");
+      await appendAuditEntry(
+        sessionId,
+        "account.deleted",
+        `Deleted account for ${account.serviceProvider}`
+      );
     }
 
     return NextResponse.json({ success: true });

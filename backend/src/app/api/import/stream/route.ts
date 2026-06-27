@@ -97,6 +97,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const sessionId = req.headers.get("x-session-id");
+      if (sessionId) {
+        const { appendAuditEntry } = await import("@/lib/session");
+        await appendAuditEntry(
+          sessionId,
+          "account.imported",
+          `Imported accounts: ${inserted} inserted, ${updated} updated, ${ignored} ignored`
+        );
+      }
+
       send({ type: "done", summary: { inserted, updated, ignored, errors } });
       ctrl.close();
     } catch (err) {

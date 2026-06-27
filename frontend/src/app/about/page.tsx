@@ -85,8 +85,10 @@ export default function AboutPage() {
           <div className="about-grid">
             {/* Left Column: Info & Socials */}
             <div className="account-card about-card">
-              <div style={{ display: "flex", alignItems: "center", gap: "0.1rem" }}>
-                <div style={{ fontSize: "3rem" }}>🔐</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ color: "var(--accent-primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
                 <div>
                   <h3 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0, color: "var(--text-main)", textAlign: "left" }}>Veshtit<sup>&reg;</sup></h3>
                   <p className="text-muted" style={{ margin: "0.25rem 0 0" }}>Digital Account Manager</p>

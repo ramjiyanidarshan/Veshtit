@@ -77,6 +77,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const sessionId = request.headers.get("x-session-id");
+    if (sessionId) {
+      const { appendAuditEntry } = await import("@/lib/session");
+      await appendAuditEntry(
+        sessionId,
+        "account.imported",
+        `Imported accounts: ${inserted} inserted, ${updated} updated, ${ignored} ignored`
+      );
+    }
+
     return NextResponse.json({
       success: true,
       summary: { inserted, updated, ignored, errors },
