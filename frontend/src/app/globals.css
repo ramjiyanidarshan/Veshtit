@@ -3438,6 +3438,7 @@ pre {
   .settings-layout {
     grid-template-columns: 1fr;
     gap: 1.25rem;
+    overflow: hidden; /* contain the nav-wrap inside the grid cell */
   }
 
   .settings-panel-card,
@@ -3454,6 +3455,8 @@ pre {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    width: 100%;
+    min-width: 0; /* prevent wrap from overflowing its grid cell */
   }
 
   /* Show arrow scroll buttons */
@@ -3490,7 +3493,8 @@ pre {
     border-radius: var(--radius-xl);
     overflow-x: auto;
     overflow-y: visible;
-    flex: 1;            /* fill space between the two arrow buttons */
+    flex: 1;
+    min-width: 0; /* critical: allows nav to shrink so both buttons stay visible */
     flex-direction: row;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
